@@ -22,10 +22,10 @@ impl Layout {
     pub fn close_frame(&mut self){
         match self.last_frame.axis{
             EFrameAxis::Vertical => {
-                self.frame_cursor_x += self.last_frame.expand;
+                self.frame_cursor_x += self.last_frame.expand + 1;
             }
             EFrameAxis::Horizontal => {
-                self.frame_cursor_y += self.last_frame.expand;
+                self.frame_cursor_y += self.last_frame.expand + 1;
             }
         }
     }
@@ -35,7 +35,7 @@ impl Layout {
     pub fn new(rect: Rect) -> Layout {
         Self {
             root: rect,
-            last_frame: Frame::new(EFrameAxis::Horizontal),
+            last_frame: Frame::new(EFrameAxis::Horizontal, false),
             frame_cursor_x: 0,
             frame_cursor_y: 0,
         }

@@ -8,7 +8,7 @@ use crate::logger::FileLogger;
 #[derive(Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    last_files: Vec<PathBuf>,
+    last_files: Vec<String>,
     width: u16,
     height: u16,
 }
@@ -46,6 +46,9 @@ impl Config {
         (self.width, self.height)
     }
 
+    pub fn get_last_files(&self) -> &Vec<String> {
+        &self.last_files
+    }
 
     pub fn load_config() -> Config {
         let path = FileSystem::get_config_file_path();

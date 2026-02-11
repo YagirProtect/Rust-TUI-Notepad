@@ -9,6 +9,9 @@ mod terminal;
 mod input;
 mod ui;
 mod controls;
+mod characters;
+mod pop_up;
+mod e_actions;
 
 fn main(){
     let mut app = App::new();

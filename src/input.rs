@@ -5,6 +5,9 @@ use crate::screen_buf::ScreenBuf;
 pub struct Input{
     pub cursor_x: u16,
     pub cursor_y: u16,
+
+
+    pub clicked:Option<(u16, u16)>,
 }
 
 impl Input {
@@ -32,6 +35,9 @@ impl Input {
                 if ny < screen.h { 
                     self.cursor_y = ny; 
                 }
+            }
+            KeyCode::Enter => {
+                self.clicked = Some((self.cursor_x, self.cursor_y));
             }
             _ => {}
         }

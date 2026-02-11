@@ -43,4 +43,16 @@ impl Rect {
     pub fn set_h(&mut self, h: u16) {
         self.h = h;
     }
+
+    pub fn contains(&self, x: u16, y: u16) -> bool {
+        if x >= self.x &&
+            y >= self.y &&
+            x < self.x + self.w &&
+            y < self.y + self.h
+        {
+            true
+        } else {
+            false
+        }
+    }
 }
