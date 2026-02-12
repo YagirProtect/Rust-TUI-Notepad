@@ -2,5 +2,5 @@
 use crate::ui::c_rect::Rect;
 
 pub trait Render{ 
-    fn draw(&self, rect: &Rect, screen: &mut ScreenBuf);
+    fn draw(&mut self, rect: &Rect, screen: &mut ScreenBuf);
 }

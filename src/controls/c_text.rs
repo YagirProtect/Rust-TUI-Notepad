@@ -7,6 +7,7 @@ use crate::ui::c_rect::Rect;
 pub struct TextBox{
     text: Vec<char>,
     color: Color,
+    rect: Rect,
 }
 
 impl TextBox {
@@ -22,10 +23,16 @@ impl GetRect for TextBox {
 }
 
 impl Control for TextBox {
+    fn save_rect(&mut self, rect: Rect) {
+        self.rect = rect;
+    }
+    fn get_rect(&self) -> &Rect {
+        return &self.rect;
+    }
 }
 
 impl Render for TextBox {
-    fn draw(&self, rect: &Rect, screen: &mut ScreenBuf) {
+    fn draw(&mut self, rect: &Rect, screen: &mut ScreenBuf) {
         let bounds = self.get_bounds();
 
 
@@ -43,6 +50,7 @@ impl TextBox{
         TextBox{
             text: String::from(text).chars().collect(),
             color: Color::White,
+            rect: Rect::default()
         }
     }
 }

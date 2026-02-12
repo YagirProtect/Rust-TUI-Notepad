@@ -1,4 +1,5 @@
-﻿use crate::characters::BORDER_DOUBLE;
+﻿use crate::characters::{BORDER_DOUBLE, BORDER_ROUNDED};
+use crate::controls::t_get_rect::Control;
 use crate::controls::t_render::Render;
 use crate::logger::FileLogger;
 use crate::screen_buf::{Color, ScreenBuf};
@@ -15,6 +16,8 @@ pub struct Frame{
     pub expand: u16,
 
     auto_size: bool,
+
+    list: Vec<Box<dyn Control>>
 }
 
 impl Frame {
@@ -138,24 +141,40 @@ impl Frame {
 
 
 impl Render for Frame {
-    fn draw(&self, _rect: &Rect, screen: &mut ScreenBuf) {
+    fn draw(&mut self, _rect: &Rect, screen: &mut ScreenBuf) {
         let (x0, y0, x1, y1) = self.border_bounds();
         if x1 <= x0 || y1 <= y0 { return; }
 
-        let border = BORDER_DOUBLE;
+        let border = BORDER_ROUNDED;
 
-        screen.set(x0, y0, border.tl, Color::DarkRed);
-        screen.set(x1, y0, border.tr, Color::DarkRed);
-        screen.set(x0, y1, border.bl, Color::DarkRed);
-        screen.set(x1, y1, border.br, Color::DarkRed);
+        let content_rect = self.border_bounds();
+
+
+        for i in x0..x1 {
+            for k in y0..y1 {
+                screen.set(i, k, ' ', Color::White);
+            }
+        }
+
+
+        screen.set(x0, y0, border.tl, Color::Blue);
+        screen.set(x1, y0, border.tr, Color::Blue);
+        screen.set(x0, y1, border.bl, Color::Blue);
+        screen.set(x1, y1, border.br, Color::Blue);
 
         for x in (x0 + 1)..x1 {
-            screen.set(x, y0, border.h, Color::DarkRed);
-            screen.set(x, y1, border.h, Color::DarkRed);
+            screen.set(x, y0, border.h, Color::Blue);
+            screen.set(x, y1, border.h, Color::Blue);
         }
         for y in (y0 + 1)..y1 {
-            screen.set(x0, y, border.v, Color::DarkRed);
-            screen.set(x1, y, border.v, Color::DarkRed);
+            screen.set(x0, y, border.v, Color::Blue);
+            screen.set(x1, y, border.v, Color::Blue);
+        }
+
+
+        for li in self.list.iter_mut() {
+            let rect = li.get_rect().clone();
+            li.draw(&rect, screen);
         }
     }
 }
@@ -168,7 +187,12 @@ impl Frame{
             expand: 2,
             cursor: 0,
             auto_size: auto_size,
+            list: Vec::new()
         }
+    }
+
+    pub fn add_control(&mut self, control: Vec<Box<dyn Control>>) {
+        self.list = control;
     }
 
     pub fn set_area(&mut self, area: Rect){

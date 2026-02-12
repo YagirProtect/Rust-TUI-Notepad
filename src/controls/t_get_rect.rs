@@ -11,13 +11,17 @@ pub trait GetRect{
 }
 pub trait Control: GetRect + Render{
 
-    fn create_control(&mut self, frame: &mut Frame, screen: &mut ScreenBuf, logger: &mut FileLogger, input: &Input) -> &Self {
+    fn create_control(&mut self, frame: &mut Frame, screen: &mut ScreenBuf, logger: &mut FileLogger, input: &Input)
+    where
+        Self: Sized
+    {
         let rect = frame.add(self.get_bounds());
         self.calculate_control(rect, logger, input); 
-        self.draw(&rect, screen);
-        self
+        self.save_rect(rect);
     }
 
+    fn get_rect(&self) -> &Rect;
+    fn save_rect(&mut self, rect: Rect);
     fn calculate_control(&mut self, rect: Rect, logger: &mut FileLogger, input: &Input){
 
     }

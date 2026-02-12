@@ -11,6 +11,7 @@ use crate::ui::c_rect::Rect;
 pub struct Button{
     text_box: TextBox,
     is_clicked: bool,
+    rect: Rect
 }
 
 impl Button {
@@ -26,12 +27,21 @@ impl GetRect for Button{
 }
 
 impl Render for Button {
-    fn draw(&self, rect: &Rect, screen: &mut ScreenBuf) {
+    fn draw(&mut self, rect: &Rect, screen: &mut ScreenBuf) {
         self.text_box.draw(rect, screen);
     }
 }
 
 impl Control for Button {
+    fn get_rect(&self) -> &Rect {
+        return &self.rect;
+    }
+
+    fn save_rect(&mut self, rect: Rect) {
+        self.rect = rect;
+    }
+
+
     fn calculate_control(&mut self, rect: Rect, logger: &mut FileLogger, input: &Input) {
         self.text_box.set_color(Color::White);
         self.is_clicked = false;
@@ -51,6 +61,7 @@ impl Button {
         Self{
             text_box: TextBox::new(text),
             is_clicked: false,
+            rect: Rect::default()
         }
     }
 }

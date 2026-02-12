@@ -34,10 +34,11 @@ impl PopUpPanelFrame{
     }
 
 
-    pub fn show(&mut self, items: Vec<(String, Action)>, file_logger: &mut FileLogger){
+    pub fn show(&mut self, items: Vec<(String, Action)>, file_logger: &mut FileLogger, input: &Input){
         self.items = items;
         self.active = true;
         self.is_free = false;
+        self.pos = (input.cursor_x, input.cursor_y);
 
         file_logger.log("show popup");
     }
@@ -48,8 +49,6 @@ impl PopUpPanelFrame{
             return Action::None;
         }
         if (input.clicked.is_some() && self.is_free){
-            file_logger.log(format!("clicked: {:?}", input.clicked));
-            file_logger.log(format!("rect: {:?}", self.frame.content_rect()));
             if !self.frame.hit(input.cursor_x, input.cursor_y)
             {
                 file_logger.log("not contains in rect");
@@ -57,7 +56,7 @@ impl PopUpPanelFrame{
                 return Action::None;
             }
         }
-        self.frame.set_area(Rect::new(self.pos.0 + 3, self.pos.1 + 2, 2, self.items.len() as u16));
+        self.frame.set_area(Rect::new(self.pos.0 + 1, self.pos.1 + 1, 2, self.items.len() as u16));
 
         self.frame.get_available_rect();
 
@@ -67,14 +66,21 @@ impl PopUpPanelFrame{
         file_logger.log("draw popup");
 
         let mut target_action = Action::None;
+        let mut list: Vec<Box<dyn Control>> = vec![];
         for (str, ac) in self.items.iter() {
-            if (Button::new(str.as_str()).create_control(&mut self.frame, screen_buff, file_logger, input).clicked()){
+            let mut btn = Button::new(str.as_str());
+            btn.create_control(&mut self.frame, screen_buff, file_logger, input);
+
+            if (btn.clicked()){
                 target_action = *ac;
                 self.active = false;
                 file_logger.log(format!("clicked: {:?}", str));
             }
+
+            list.push(Box::new(btn));
         }
-        self.frame.draw(&self.frame.area, screen_buff);
+        self.frame.add_control(list);
+        self.frame.draw(&Rect::default(), screen_buff);
         self.is_free = true;
 
         return target_action;

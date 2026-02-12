@@ -18,6 +18,7 @@ use crossterm::{event, execute};
 use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
+use crate::controls::c_text::TextBox;
 
 pub struct App{
     pub logger: FileLogger,
@@ -130,27 +131,62 @@ impl App{
         let root_rect = Rect::new(0, 0, self.screen_buf.w, self.screen_buf.h);
         let mut layout = Layout::new(root_rect);
 
-        let top_frame = layout.open_frame(Frame::new(EFrameAxis::Horizontal, false));
+        let mut top_frame = layout.open_frame(Frame::new(EFrameAxis::Horizontal, false));
         {
-            if Button::new(" FILE |").create_control(top_frame, &mut self.screen_buf, &mut self.logger, &self.input).clicked() {
-                self.logger.log("File Clicked");
+            let mut fileBtn = Button::new(" FILE ");
+            fileBtn.create_control(top_frame, &mut self.screen_buf, &mut self.logger, &self.input);
+            let mut delimiter1 = TextBox::new("│");
+            delimiter1.create_control(top_frame, &mut self.screen_buf, &mut self.logger, &self.input);
+            let mut editBtn = Button::new(" EDIT ");
+            editBtn.create_control(top_frame, &mut self.screen_buf, &mut self.logger, &self.input);
+            let mut delimiter2 = TextBox::new("│");
+            delimiter2.create_control(top_frame, &mut self.screen_buf, &mut self.logger, &self.input);
+            let mut infoBtn = Button::new(" INFO ");
+            infoBtn.create_control(top_frame, &mut self.screen_buf, &mut self.logger, &self.input);
+
+
+            if (fileBtn.clicked()) {
                 self.pop_up.show(vec![
                     (" New File.. ".to_string(), Action::NewFile),
                     (" Open File..".to_string(), Action::OpenFile),
                     (" Save File..".to_string(), Action::SaveFile),
-                ], &mut self.logger)
+                ], &mut self.logger, &self.input)
             }
-            Button::new(" EDIT |").create_control(top_frame, &mut self.screen_buf, &mut self.logger, &self.input);
-            Button::new(" INFO |").create_control(top_frame, &mut self.screen_buf, &mut self.logger, &self.input);
+
+            if (editBtn.clicked()) {
+                self.pop_up.show(vec![
+                    (" Undo ".to_string(), Action::NewFile),
+                    (" Rendo".to_string(), Action::OpenFile),
+                    (" Cut".to_string(), Action::SaveFile),
+                    (" Copy".to_string(), Action::SaveFile),
+                    (" Paste".to_string(), Action::SaveFile),
+                    (" Find".to_string(), Action::SaveFile),
+                    (" Replace".to_string(), Action::SaveFile),
+                ], &mut self.logger, &self.input)
+            }
+
+            if (infoBtn.clicked()) {
+                self.pop_up.show(vec![
+                    (" FAQ ".to_string(), Action::NewFile),
+                ], &mut self.logger, &self.input)
+            }
+
+            top_frame.add_control(vec![
+                Box::new(fileBtn),
+                Box::new(delimiter1),
+                Box::new(editBtn),
+                Box::new(delimiter2),
+                Box::new(infoBtn),
+            ]);
 
 
-
-            top_frame.draw(&top_frame.area, &mut self.screen_buf);
+            top_frame.draw(&Rect::default(), &mut self.screen_buf);
         }
         layout.close_frame();
 
         let left_frame = layout.open_frame(Frame::new(EFrameAxis::Vertical, false));
         {
+            let mut buttons: Vec<Box<dyn Control>> = vec![];
             let max_len = 18;
             for get_last_file in self.config.get_last_files() {
                 let mut str = String::from(" ");
@@ -170,12 +206,16 @@ impl App{
                         }
 
                         str.push_str(file_name.as_str());
-                        Button::new(str.as_str()).create_control(left_frame, &mut self.screen_buf, &mut self.logger, &self.input);
+
+                        let mut btn = Button::new(str.as_str());
+                        btn.create_control(left_frame, &mut self.screen_buf, &mut self.logger, &self.input);
+
+                        buttons.push(Box::new(btn));
                     }
                 }
             }
-
-            left_frame.draw(&left_frame.area, &mut self.screen_buf);
+            left_frame.add_control(buttons);
+            left_frame.draw(&Rect::default(), &mut self.screen_buf);
         }
         layout.close_frame();
 
@@ -183,7 +223,7 @@ impl App{
         let editor_frame = layout.open_frame(Frame::new(EFrameAxis::Horizontal, false));
         {
             editor_frame.fill(&root_rect);
-            editor_frame.draw(&editor_frame.area, &mut self.screen_buf);
+            editor_frame.draw(&Rect::default(), &mut self.screen_buf);
         }
         layout.close_frame();
 
