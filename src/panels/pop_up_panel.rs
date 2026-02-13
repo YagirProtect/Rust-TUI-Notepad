@@ -1,4 +1,5 @@
 ﻿use log::log;
+use crate::config::Config;
 use crate::controls::c_button::Button;
 use crate::controls::t_get_rect::Control;
 use crate::controls::t_render::Render;
@@ -22,6 +23,8 @@ pub struct PopUpPanelFrame{
 
     frame: Frame,
 
+    show: bool,
+
     is_clicked: bool,
 }
 
@@ -30,7 +33,16 @@ impl LayoutPanel for PopUpPanelFrame {
         999
     }
 
-    fn create_layout(&mut self, layout: &mut Layout) {
+    fn get_frame_id(&self) -> u16 {
+        return self.frame.frame_id;
+    }
+
+    fn try_hit(&mut self, layout: &mut Layout, input: &Input) -> bool {
+
+        return self.frame.hit(input.cursor_x, input.cursor_y);
+    }
+
+    fn create_layout(&mut self, layout: &mut Layout, config: &mut Config) {
         if (self.active){
             self.frame = Frame::new(EFrameAxis::Vertical, true);
             self.frame.set_area(Rect::new(self.pos.0 + 1, self.pos.1 + 1, 2, self.items.len() as u16));
@@ -88,10 +100,13 @@ impl LayoutPanel for PopUpPanelFrame {
         if (!self.active){
             return;
         }
-        for button in self.buttons.drain(..) {
-            self.frame.add_control(Box::new(button));
+        if (self.show) {
+            for button in self.buttons.drain(..) {
+                self.frame.add_control(Box::new(button));
+            }
+            self.frame.draw(&Rect::default(), screen);
         }
-        self.frame.draw(&Rect::default(), screen);
+        self.show = true;
     }
 }
 
@@ -106,6 +121,7 @@ impl PopUpPanelFrame{
             frame: Frame::new(EFrameAxis::Vertical, true),
             buttons: vec![],
             is_clicked: false,
+            show: false,
         }
     }
 
@@ -114,6 +130,7 @@ impl PopUpPanelFrame{
         self.items = items;
         self.active = true;
         self.is_free = false;
+        self.show = false;
         file_logger.log(format!("show {}", self.items.len()));
         self.pos = (input.cursor_x, input.cursor_y);
     }

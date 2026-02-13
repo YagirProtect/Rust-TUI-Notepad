@@ -160,6 +160,8 @@ impl Render for Frame {
         }
 
 
+
+
         screen.set(x0, y0, border.tl, Color::Blue);
         screen.set(x1, y0, border.tr, Color::Blue);
         screen.set(x0, y1, border.bl, Color::Blue);
@@ -173,7 +175,6 @@ impl Render for Frame {
             screen.set(x0, y, border.v, Color::Blue);
             screen.set(x1, y, border.v, Color::Blue);
         }
-
 
         for li in self.list.iter_mut() {
             let rect = li.get_rect().clone();
@@ -191,7 +192,7 @@ impl Frame{
             cursor: 0,
             auto_size: auto_size,
             list: Vec::new(),
-            frame_id: ID.load(Relaxed)
+            frame_id: ID.fetch_add(1, Relaxed)
         }
     }
 

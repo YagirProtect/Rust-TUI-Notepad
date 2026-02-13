@@ -8,5 +8,11 @@ pub enum Action{
     
     Copy,
     Paste,
-    Delete
+    Delete,
+    Undo,
+    Redo,
+    Cut,
+    Find,
+    Replace,
+    FAQ,
 }

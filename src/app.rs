@@ -19,6 +19,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Duration;
 use crate::controls::c_text::TextBox;
+use crate::panels::files_panel::FilesFrame;
 use crate::panels::menu_panel::{LayoutPanel, MenuFrame};
 
 pub struct App{
@@ -114,7 +115,6 @@ impl App{
                 continue;
             }
 
-            // render
             self.screen_buf.clear();
 
 
@@ -131,15 +131,18 @@ impl App{
 
     fn create_layout(&mut self, layout: &mut Layout){
 
-        self.pop_up.create_layout(layout);
+        self.pop_up.create_layout(layout, &mut self.config);
 
-        self.logger.log(format!("{:?}", self.pop_up.buttons));
-        
+
+
         let mut menu_panel = MenuFrame::default();
-        menu_panel.create_layout(layout);
+        menu_panel.create_layout(layout, &mut self.config);
 
 
+        let mut files_panel = FilesFrame::default();
+        files_panel.create_layout(layout, &mut self.config);
 
+        layout.add_panel(Box::new(files_panel));
         layout.add_panel(Box::new(menu_panel));
     }
 
@@ -152,8 +155,7 @@ impl App{
         self.create_layout(&mut layout);
 
         layout.interact(&mut self.logger, &mut self.input, &mut self.pop_up);
-        self.pop_up.interact(&mut self.logger, &mut self.input, &mut PopUpPanelFrame::new());
 
-        layout.draw(&mut self.screen_buf, &mut self.pop_up)
+        layout.draw(&mut self.screen_buf, &mut self.pop_up, &mut self.logger)
     }
 }

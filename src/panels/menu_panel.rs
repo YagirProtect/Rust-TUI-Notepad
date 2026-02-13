@@ -1,4 +1,6 @@
-﻿use crate::controls::c_button::Button;
+﻿use crate::config::Config;
+use crate::controls::c_button::Button;
+use crate::controls::c_delimiter::Delimiter;
 use crate::controls::c_text::TextBox;
 use crate::controls::t_get_rect::Control;
 use crate::controls::t_render::Render;
@@ -29,24 +31,30 @@ impl LayoutPanel for MenuFrame {
         0
     }
 
-    fn create_layout(&mut self, layout: &mut Layout){
+    fn get_frame_id(&self) -> u16 {
+        return self.frame;
+    }
+
+    fn create_layout(&mut self, layout: &mut Layout, config: &mut Config){
         let frame = Frame::new(EFrameAxis::Horizontal, false);
         let mut open_frame = layout.open_frame(frame);
 
         let mut fileBtn = Button::new(" FILE ");
         fileBtn.create_control(open_frame);
-        let mut delimiter1 = TextBox::new("│");
+        let mut delimiter1 = Delimiter::new();
         delimiter1.create_control(open_frame);
         let mut editBtn = Button::new(" EDIT ");
         editBtn.create_control(open_frame);
-        let mut delimiter2 = TextBox::new("│");
+        let mut delimiter2 = Delimiter::new();
         delimiter2.create_control(open_frame);
         let mut infoBtn = Button::new(" INFO ");
         infoBtn.create_control(open_frame);
-
+        let mut delimiter3 = Delimiter::new();
+        delimiter3.create_control(open_frame);
 
         open_frame.add_control(Box::new(delimiter1));
         open_frame.add_control(Box::new(delimiter2));
+        open_frame.add_control(Box::new(delimiter3));
 
         let frame_id = open_frame.frame_id;
 
@@ -77,13 +85,13 @@ impl LayoutPanel for MenuFrame {
             btn.calculate_control(file_logger, input);
             if (btn.clicked()) {
                 pop_pup.show(vec![
-                    (" Undo ".to_string(), Action::NewFile),
-                    (" Redo".to_string(), Action::OpenFile),
-                    (" Cut".to_string(), Action::SaveFile),
-                    (" Copy".to_string(), Action::SaveFile),
-                    (" Paste".to_string(), Action::SaveFile),
-                    (" Find".to_string(), Action::SaveFile),
-                    (" Replace".to_string(), Action::SaveFile),
+                    (" Undo ".to_string(), Action::Undo),
+                    (" Redo".to_string(), Action::Redo),
+                    (" Cut".to_string(), Action::Cut),
+                    (" Copy".to_string(), Action::Copy),
+                    (" Paste".to_string(), Action::Paste),
+                    (" Find".to_string(), Action::Find),
+                    (" Replace".to_string(), Action::Replace),
                 ], file_logger, input)
             }
         }
@@ -92,7 +100,7 @@ impl LayoutPanel for MenuFrame {
             btn.calculate_control(file_logger, input);
             if (btn.clicked()) {
                 pop_pup.show(vec![
-                    (" FAQ ".to_string(), Action::NewFile),
+                    (" FAQ ".to_string(), Action::FAQ),
                 ], file_logger, input)
             }
         }
@@ -114,7 +122,12 @@ impl LayoutPanel for MenuFrame {
 
 pub trait LayoutPanel {
     fn get_order(&self) -> u16;
-    fn create_layout(&mut self, layout: &mut Layout);
+    fn get_frame_id(&self) -> u16;
+    fn create_layout(&mut self, layout: &mut Layout, config: &mut Config);
     fn interact(&mut self, file_logger: &mut FileLogger, input: &Input, pop_pup: &mut PopUpPanelFrame) -> Action;
     fn draw(&mut self, layout: &mut Layout, screen: &mut ScreenBuf);
+    fn try_hit(&mut self, layout: &mut Layout, input: &Input) -> bool {
+        let frame = layout.get_frame(self.get_frame_id()).unwrap();
+        return frame.hit(input.cursor_x, input.cursor_y);
+    }
 }
