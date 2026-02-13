@@ -10,8 +10,8 @@ mod input;
 mod ui;
 mod controls;
 mod characters;
-mod pop_up;
 mod e_actions;
+mod panels;
 
 fn main(){
     let mut app = App::new();

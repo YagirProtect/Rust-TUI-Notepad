@@ -4,6 +4,7 @@ use crate::controls::t_render::Render;
 use crate::screen_buf::{Color, ScreenBuf};
 use crate::ui::c_rect::Rect;
 
+#[derive(Debug)]
 pub struct TextBox{
     text: Vec<char>,
     color: Color,
@@ -34,10 +35,6 @@ impl Control for TextBox {
 impl Render for TextBox {
     fn draw(&mut self, rect: &Rect, screen: &mut ScreenBuf) {
         let bounds = self.get_bounds();
-
-
-
-
 
         for i in 0..bounds.w {
             screen.set(rect.x + i, rect.y,  self.text[i as usize], self.color);

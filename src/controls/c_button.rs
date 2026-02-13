@@ -8,6 +8,7 @@ use crate::ui::c_rect::Rect;
 
 
 
+#[derive(Debug)]
 pub struct Button{
     text_box: TextBox,
     is_clicked: bool,
@@ -42,10 +43,10 @@ impl Control for Button {
     }
 
 
-    fn calculate_control(&mut self, rect: Rect, logger: &mut FileLogger, input: &Input) {
+    fn calculate_control(&mut self, logger: &mut FileLogger, input: &Input) {
         self.text_box.set_color(Color::White);
         self.is_clicked = false;
-        if rect.contains(input.cursor_x, input.cursor_y) {
+        if self.get_rect().contains(input.cursor_x, input.cursor_y) {
             if (input.clicked.is_some()) {
                 self.text_box.set_color(Color::Blue);
                 self.is_clicked = true;

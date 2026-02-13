@@ -1,15 +1,20 @@
-﻿use crate::characters::{BORDER_DOUBLE, BORDER_ROUNDED};
+﻿use std::sync::atomic::AtomicU16;
+use std::sync::atomic::Ordering::Relaxed;
+use crate::characters::{BORDER_DOUBLE, BORDER_ROUNDED};
 use crate::controls::t_get_rect::Control;
 use crate::controls::t_render::Render;
 use crate::logger::FileLogger;
 use crate::screen_buf::{Color, ScreenBuf};
 use crate::ui::c_rect::Rect;
 
+static ID: AtomicU16 = AtomicU16::new(0);
+
 pub enum EFrameAxis{
     Vertical,
     Horizontal,
 }
 pub struct Frame{
+    pub frame_id: u16,
     pub axis: EFrameAxis,
     pub area: Rect,
     pub cursor: u16,
@@ -54,7 +59,7 @@ impl Frame {
 }
 
 impl Frame {
-    pub fn add(&mut self, control: Rect) -> Rect {
+    pub fn add_layout_changes(&mut self, control: Rect) -> Rect {
         let content_rect = self.content_rect();
 
         match self.axis {
@@ -147,8 +152,6 @@ impl Render for Frame {
 
         let border = BORDER_ROUNDED;
 
-        let content_rect = self.border_bounds();
-
 
         for i in x0..x1 {
             for k in y0..y1 {
@@ -187,12 +190,13 @@ impl Frame{
             expand: 2,
             cursor: 0,
             auto_size: auto_size,
-            list: Vec::new()
+            list: Vec::new(),
+            frame_id: ID.load(Relaxed)
         }
     }
 
-    pub fn add_control(&mut self, control: Vec<Box<dyn Control>>) {
-        self.list = control;
+    pub fn add_control(&mut self, control: Box<dyn Control>) {
+        self.list.push(control);
     }
 
     pub fn set_area(&mut self, area: Rect){

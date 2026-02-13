@@ -3,7 +3,7 @@ use std::io;
 use std::io::Write;
 use crossterm::style::Stylize;
 
-#[derive(Copy, Clone, PartialEq)]
+#[derive(Copy, Clone, PartialEq, Debug)]
 pub enum Color{
     White,
     Green,
