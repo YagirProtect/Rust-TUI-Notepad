@@ -9,6 +9,7 @@ use crate::input::Input;
 use crate::logger::FileLogger;
 use crate::panels::pop_up_panel::PopUpPanelFrame;
 use crate::screen_buf::ScreenBuf;
+use crate::text_buffer::TextBuf;
 use crate::ui::c_frame::{EFrameAxis, Frame};
 use crate::ui::c_layout::Layout;
 use crate::ui::c_rect::Rect;
@@ -65,7 +66,7 @@ impl LayoutPanel for MenuFrame {
         self.info_button = Some(infoBtn);
         self.frame = frame_id;
     }
-    fn interact(&mut self, file_logger: &mut FileLogger, input: &Input, pop_pup: &mut PopUpPanelFrame) -> Action {
+    fn interact(&mut self, file_logger: &mut FileLogger, input: &mut Input, pop_pup: &mut PopUpPanelFrame, text_buf: &mut TextBuf) -> Action {
 
         if let Some(btn) = &mut self.file_button {
 
@@ -108,7 +109,7 @@ impl LayoutPanel for MenuFrame {
 
         Action::None
     }
-    fn draw(&mut self, layout: &mut Layout, screen: &mut ScreenBuf) {
+    fn draw(&mut self, layout: &mut Layout, screen: &mut ScreenBuf, text_buf: &mut TextBuf) {
         let open_frame = layout.get_frame(self.frame).unwrap();
 
         open_frame.add_control(Box::new(self.file_button.take().unwrap()));
@@ -124,8 +125,8 @@ pub trait LayoutPanel {
     fn get_order(&self) -> u16;
     fn get_frame_id(&self) -> u16;
     fn create_layout(&mut self, layout: &mut Layout, config: &mut Config);
-    fn interact(&mut self, file_logger: &mut FileLogger, input: &Input, pop_pup: &mut PopUpPanelFrame) -> Action;
-    fn draw(&mut self, layout: &mut Layout, screen: &mut ScreenBuf);
+    fn interact(&mut self, file_logger: &mut FileLogger, input: &mut Input, pop_pup: &mut PopUpPanelFrame, text_buf: &mut TextBuf) -> Action;
+    fn draw(&mut self, layout: &mut Layout, screen: &mut ScreenBuf, text_buf: &mut TextBuf);
     fn try_hit(&mut self, layout: &mut Layout, input: &Input) -> bool {
         let frame = layout.get_frame(self.get_frame_id()).unwrap();
         return frame.hit(input.cursor_x, input.cursor_y);

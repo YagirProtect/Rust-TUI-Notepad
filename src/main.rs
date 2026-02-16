@@ -12,6 +12,7 @@ mod controls;
 mod characters;
 mod e_actions;
 mod panels;
+mod text_buffer;
 
 fn main(){
     let mut app = App::new();

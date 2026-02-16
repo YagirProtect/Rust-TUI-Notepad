@@ -9,14 +9,22 @@ use crate::logger::FileLogger;
 #[serde(default)]
 pub struct Config {
     last_files: Vec<String>,
+    last_text: Vec<Vec<char>>,
     width: u16,
     height: u16,
+}
+
+impl Config {
+    pub fn get_lines_clone(&self) -> Vec<Vec<char>> {
+        return self.last_text.clone();
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self{
             last_files: vec![],
+            last_text: vec![],
             width: 400,
             height: 200,
         }

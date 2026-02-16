@@ -1,26 +1,22 @@
 ﻿use crate::config::Config;
-use crate::controls::c_button::Button;
-use crate::controls::t_get_rect::Control;
 use crate::controls::t_render::Render;
-use crate::e_actions::Action;
 use crate::fs::FileSystem;
 use crate::input::Input;
 use crate::logger::FileLogger;
+use crate::panels::files_panel::FilesFrame;
+use crate::panels::menu_panel::{LayoutPanel, MenuFrame};
 use crate::panels::pop_up_panel::PopUpPanelFrame;
+use crate::panels::text_editor_panel::TextEditorFrame;
 use crate::screen_buf::ScreenBuf;
 use crate::terminal::Terminal;
-use crate::ui::c_frame::{EFrameAxis, Frame};
 use crate::ui::c_layout::Layout;
 use crate::ui::c_rect::Rect;
 use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use crossterm::{event, execute};
 use std::io::Write;
-use std::path::PathBuf;
 use std::time::Duration;
-use crate::controls::c_text::TextBox;
-use crate::panels::files_panel::FilesFrame;
-use crate::panels::menu_panel::{LayoutPanel, MenuFrame};
+use crate::text_buffer::TextBuf;
 
 pub struct App{
     pub logger: FileLogger,
@@ -28,7 +24,8 @@ pub struct App{
     pub config: Config,
     pub screen_buf: ScreenBuf,
     pub input: Input,
-    pub pop_up: PopUpPanelFrame
+    pub pop_up: PopUpPanelFrame,
+    pub text_buffer: TextBuf,
 }
 
 impl App{
@@ -47,7 +44,8 @@ impl App{
             config,
             screen_buf,
             input,
-            pop_up: PopUpPanelFrame::new()
+            pop_up: PopUpPanelFrame::new(),
+            text_buffer: TextBuf::default()
         }
     }
 
@@ -126,14 +124,13 @@ impl App{
             term.out.flush()?;
 
             self.input.clicked = None;
+            self.input.last_character = None;
         }
     }
 
     fn create_layout(&mut self, layout: &mut Layout){
 
         self.pop_up.create_layout(layout, &mut self.config);
-
-
 
         let mut menu_panel = MenuFrame::default();
         menu_panel.create_layout(layout, &mut self.config);
@@ -142,8 +139,13 @@ impl App{
         let mut files_panel = FilesFrame::default();
         files_panel.create_layout(layout, &mut self.config);
 
+        let mut text_editor = TextEditorFrame::default();
+        text_editor.create_layout(layout, &mut self.config);
+
+
         layout.add_panel(Box::new(files_panel));
         layout.add_panel(Box::new(menu_panel));
+        layout.add_panel(Box::new(text_editor));
     }
 
 
@@ -154,8 +156,8 @@ impl App{
         let mut layout = Layout::new(root_rect);
         self.create_layout(&mut layout);
 
-        layout.interact(&mut self.logger, &mut self.input, &mut self.pop_up);
+        layout.interact(&mut self.logger, &mut self.input, &mut self.pop_up, &mut self.text_buffer);
 
-        layout.draw(&mut self.screen_buf, &mut self.pop_up, &mut self.logger)
+        layout.draw(&mut self.screen_buf, &mut self.pop_up, &mut self.logger, &mut self.text_buffer);
     }
 }

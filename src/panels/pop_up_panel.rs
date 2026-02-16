@@ -8,6 +8,7 @@ use crate::input::Input;
 use crate::logger::FileLogger;
 use crate::panels::menu_panel::LayoutPanel;
 use crate::screen_buf::ScreenBuf;
+use crate::text_buffer::TextBuf;
 use crate::ui::c_frame::{EFrameAxis, Frame};
 use crate::ui::c_layout::Layout;
 use crate::ui::c_rect::Rect;
@@ -58,7 +59,7 @@ impl LayoutPanel for PopUpPanelFrame {
         }
     }
 
-    fn interact(&mut self, file_logger: &mut FileLogger, input: &Input, pop_pup: &mut PopUpPanelFrame) -> Action {
+    fn interact(&mut self, file_logger: &mut FileLogger, input: &mut Input, pop_pup: &mut PopUpPanelFrame, text_buf: &mut TextBuf) -> Action {
 
         if (!self.active){
             return Action::None;
@@ -95,7 +96,7 @@ impl LayoutPanel for PopUpPanelFrame {
         return Action::None;
     }
 
-    fn draw(&mut self, layout: &mut Layout, screen: &mut ScreenBuf) {
+    fn draw(&mut self, layout: &mut Layout, screen: &mut ScreenBuf, text_buf: &mut TextBuf) {
 
         if (!self.active){
             return;

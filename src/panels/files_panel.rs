@@ -9,6 +9,7 @@ use crate::logger::FileLogger;
 use crate::panels::menu_panel::LayoutPanel;
 use crate::panels::pop_up_panel::PopUpPanelFrame;
 use crate::screen_buf::ScreenBuf;
+use crate::text_buffer::TextBuf;
 use crate::ui::c_frame::{EFrameAxis, Frame};
 use crate::ui::c_layout::Layout;
 use crate::ui::c_rect::Rect;
@@ -64,7 +65,7 @@ impl LayoutPanel for FilesFrame {
         layout.close_frame();
     }
 
-    fn interact(&mut self, file_logger: &mut FileLogger, input: &Input, pop_pup: &mut PopUpPanelFrame) -> Action {
+    fn interact(&mut self, file_logger: &mut FileLogger, input: &mut Input, pop_pup: &mut PopUpPanelFrame, text_buf: &mut TextBuf) -> Action {
         for button in self.buttons.iter_mut() {
             button.calculate_control(file_logger, input);
             if (button.clicked()){
@@ -78,7 +79,7 @@ impl LayoutPanel for FilesFrame {
         Action::None
     }
 
-    fn draw(&mut self, layout: &mut Layout, screen: &mut ScreenBuf) {
+    fn draw(&mut self, layout: &mut Layout, screen: &mut ScreenBuf, text_buf: &mut TextBuf) {
         let frame = layout.get_frame(self.frame).unwrap();
         for button in self.buttons.drain(..) {
             frame.add_control(Box::new(button));

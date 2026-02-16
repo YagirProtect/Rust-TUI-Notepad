@@ -26,7 +26,7 @@ pub struct Frame{
 }
 
 impl Frame {
-    pub fn fill(&mut self, root_rect: &Rect) {
+    pub fn fill(&mut self, root_rect: Rect) {
         match self.axis {
             EFrameAxis::Vertical => {
                 let delta_x = root_rect.w - self.area.x - 1;
