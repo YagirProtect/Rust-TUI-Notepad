@@ -13,13 +13,6 @@ use crate::ui::c_rect::Rect;
 
 pub struct TextEditorFrame {
     available_rect: Rect,
-
-    current_index: usize,
-    line_index: usize,
-
-    scroll_x: u16,
-    scroll_y: u16,
-
     frame: u16,
 }
 
@@ -63,36 +56,34 @@ impl LayoutPanel for TextEditorFrame {
                 let char = input.last_character.unwrap();
 
                 if (char == '\n'){
-
+                    text_buf.add_line();
+                    input.cursor_y += 1;
                 }else if (char == '\x08'){
-
+                    text_buf.remove_char();
                 }else{
                     if (text_buf.lines.len() == 0) {
                         text_buf.lines.push(Vec::new());
                     }
-                    text_buf.lines[self.line_index].push(char);
+
+                    text_buf.add_char(char);
+
                     input.cursor_x += 1;
-                    file_logger.log(format!("Entered character following character: '{:?}'", &text_buf.lines[self.line_index]));
                 }
             }
 
 
             if (text_buf.lines.len() > 0){
-                let line = &text_buf.lines[self.line_index];
-                if ((input.cursor_x as usize) < line.len()) {
-                    if (line[input.cursor_x as usize] == '\n') {
-                        if (text_buf.lines.len() + 1 < text_buf.lines.len()) {
-                            self.line_index += 1;
-                        }
-                    }
-                }
+                let line = text_buf.get_current_line();
 
 
-                let max_x = self.available_rect.x + text_buf.lines[self.line_index].len() as u16;
+                let max_x = self.available_rect.x + line.len() as u16;
                 let min_x = self.available_rect.x;
 
-                let max_y = self.available_rect.y + text_buf.lines[self.line_index].len() as u16;
+                let max_y = self.available_rect.y + (text_buf.lines.len()-1) as u16;
                 let min_y = self.available_rect.y;
+
+                input.cursor_y = self.available_rect.y + text_buf.line_index as u16;
+                input.cursor_x = self.available_rect.x + text_buf.current_index as u16;
 
                 input.clamp_cursor(min_x, max_x, min_y, max_y);
             }
@@ -114,7 +105,7 @@ impl LayoutPanel for TextEditorFrame {
 
 
         for line_index in 0..text_buf.lines.len() {
-            if (self.available_rect.x as usize + line_index >= max_y as usize){
+            if (self.available_rect.y as usize + line_index >= max_y as usize){
                 break;
             }
 
@@ -134,10 +125,6 @@ impl Default for TextEditorFrame {
     fn default() -> Self {
         Self{
             available_rect: Default::default(),
-            current_index: 0,
-            line_index: 0,
-            scroll_x: 0,
-            scroll_y: 0,
             frame: 0,
         }
     }
