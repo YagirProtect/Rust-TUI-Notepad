@@ -70,7 +70,7 @@ impl App{
 
                         match k.kind {
                             KeyEventKind::Press => {
-                                self.input.handle_input(k.code, &mut self.screen_buf);
+                                self.input.handle_input(k.code, &mut self.screen_buf, &mut self.text_buffer);
                                 dirty = true;
 
                             }

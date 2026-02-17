@@ -14,6 +14,7 @@ use crate::ui::c_rect::Rect;
 pub struct TextEditorFrame {
     available_rect: Rect,
     frame: u16,
+    offset: u16,
 }
 
 impl LayoutPanel for TextEditorFrame {
@@ -41,6 +42,24 @@ impl LayoutPanel for TextEditorFrame {
 
     fn interact(&mut self, file_logger: &mut FileLogger, input: &mut Input, pop_pup: &mut PopUpPanelFrame, text_buf: &mut TextBuf) -> Action {
 
+        self.offset = 0;
+        if (text_buf.lines.len() < 10){
+            self.offset = 2;
+        }else if (text_buf.lines.len() < 100){
+            self.offset = 3;
+        }else if (text_buf.lines.len() < 1000){
+            self.offset = 4;
+        }else if (text_buf.lines.len() < 10000){
+            self.offset = 5;
+        }
+
+        self.available_rect.set_x(self.available_rect.x + self.offset as u16);
+        if (input.mode == EInputMode::TextEditor){
+            if (input.cursor_x < self.available_rect.x){
+                input.cursor_x = self.available_rect.x;
+            }
+        }
+        
         if (self.available_rect.contains(input.cursor_x, input.cursor_y) && input.mode == EInputMode::FreeMove) {
             if (input.clicked.is_some()){
                 input.change_mode(EInputMode::TextEditor);
@@ -55,20 +74,13 @@ impl LayoutPanel for TextEditorFrame {
             if (input.last_character.is_some()){
                 let char = input.last_character.unwrap();
 
-                if (char == '\n'){
-                    text_buf.add_line();
-                    input.cursor_y += 1;
-                }else if (char == '\x08'){
-                    text_buf.remove_char();
-                }else{
-                    if (text_buf.lines.len() == 0) {
-                        text_buf.lines.push(Vec::new());
-                    }
-
-                    text_buf.add_char(char);
-
-                    input.cursor_x += 1;
+                if (text_buf.lines.len() == 0) {
+                    text_buf.lines.push(Vec::new());
                 }
+
+                text_buf.add_char(char);
+
+                input.cursor_x += 1;
             }
 
 
@@ -105,6 +117,12 @@ impl LayoutPanel for TextEditorFrame {
 
 
         for line_index in 0..text_buf.lines.len() {
+            let index: Vec<char> = (line_index+1).to_string().as_str().chars().collect();
+            let index_x = min_x-self.offset;
+            for i in 0..index.len() {
+                screen.set(index_x + i as u16, min_y + line_index as u16, index[i], Color::Gray)
+            }
+            
             if (self.available_rect.y as usize + line_index >= max_y as usize){
                 break;
             }
@@ -126,6 +144,7 @@ impl Default for TextEditorFrame {
         Self{
             available_rect: Default::default(),
             frame: 0,
+            offset: 0
         }
     }
 }

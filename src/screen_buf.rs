@@ -11,6 +11,7 @@ pub enum Color{
     Blue,
     Red,
     DarkRed,
+    Gray,
 }
 
 #[derive(Copy, Clone)]
@@ -105,6 +106,9 @@ impl ScreenBuf {
                         }
                         Color::DarkRed => {
                             s.push_str(self.cells[i].ch.dark_red().to_string().as_str());
+                        }
+                        Color::Gray => {
+                            s.push_str(self.cells[i].ch.dark_grey().to_string().as_str());
                         }
                     }
 

@@ -1,6 +1,6 @@
 ﻿use crossterm::event::KeyCode;
 use crate::screen_buf::ScreenBuf;
-
+use crate::text_buffer::TextBuf;
 
 #[derive(Default, PartialEq)]
 pub enum EInputMode{
@@ -46,30 +46,71 @@ impl Input {
 }
 
 impl Input {
-    pub fn handle_input(&mut self, k: KeyCode, screen: &ScreenBuf) {
+    pub fn handle_input(&mut self, k: KeyCode, screen: &ScreenBuf, text_buf: &mut TextBuf) {
         match k {
-            KeyCode::Left => { /* ... */ }
-            KeyCode::Right => { /* ... */ }
-            KeyCode::Up => { /* ... */ }
-            KeyCode::Down => { /* ... */ }
+            KeyCode::Left => {
+                if (self.mode == EInputMode::FreeMove) {
+                    if self.cursor_x > 0 {
+                        self.cursor_x -= 1;
+                    }
+                } else {
+                    text_buf.change_cursor_horizontal(-1);
+                }
+            }
+            KeyCode::Right => {
+                if (self.mode == EInputMode::FreeMove) {
+                    let nx = self.cursor_x + 1;
+                    if nx < screen.w {
+                        self.cursor_x = nx;
+                    }
+                } else {
+                    text_buf.change_cursor_horizontal(1);
+                }
+            }
+            KeyCode::Up => {
+                if (self.mode == EInputMode::FreeMove) {
+                    if self.cursor_y > 0 {
+                        self.cursor_y -= 1;
+                    }
+                }else{
+                    text_buf.change_cursor_vertical(-1);
+                }
+            }
+            KeyCode::Down => {
+                if (self.mode == EInputMode::FreeMove) {
+                    let ny = self.cursor_y + 1;
+                    if ny < screen.h {
+                        self.cursor_y = ny;
+                    }
+                }else{
+                    text_buf.change_cursor_vertical(1);
+                }
+            }
 
             KeyCode::Enter => {
                 if self.mode == EInputMode::FreeMove {
                     self.clicked = Some((self.cursor_x, self.cursor_y));
                 } else {
-                    self.last_character = Some('\n');
+                    text_buf.add_line();
                 }
             }
 
             KeyCode::Backspace => {
                 if self.mode == EInputMode::TextEditor {
-                    self.last_character = Some('\x08');
+                    text_buf.remove_char_backspace();
                 }
             }
 
+            KeyCode::Delete => {
+                if self.mode == EInputMode::TextEditor {
+                    text_buf.remove_char_delete();
+                }
+            }
+
+
             KeyCode::Tab => {
                 if self.mode == EInputMode::TextEditor {
-                    self.last_character = Some('\t');
+                    text_buf.add_tab();
                 }
             }
 
