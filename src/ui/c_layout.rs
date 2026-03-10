@@ -1,9 +1,10 @@
-﻿use std::cmp::Reverse;
+use std::cmp::Reverse;
+use crate::e_actions::Action;
 use crate::input::Input;
 use crate::logger::FileLogger;
 use crate::panels::menu_panel::{LayoutPanel, MenuFrame};
 use crate::panels::pop_up_panel::PopUpPanelFrame;
-use crate::screen_buf::ScreenBuf;
+use crate::screen_buffer::ScreenBuf;
 use crate::text_buffer::TextBuf;
 use crate::ui::c_frame::{EFrameAxis, Frame};
 use crate::ui::c_rect::Rect;
@@ -25,12 +26,16 @@ impl Layout {
         input: &mut Input,
         pop_up_panel_frame: &mut PopUpPanelFrame,
         text_buf: &mut TextBuf
-    ) {
+    ) -> Action {
 
-        pop_up_panel_frame.interact(file_logger, input, &mut PopUpPanelFrame::new(), text_buf);
+        let action = pop_up_panel_frame.interact(file_logger, input, &mut PopUpPanelFrame::new(), text_buf);
+        if action != Action::None {
+            return action;
+        }
+
         if (pop_up_panel_frame.active){
             if (pop_up_panel_frame.try_hit(self, input)){
-                return;
+                return Action::None;
             }
         }
 
@@ -48,13 +53,14 @@ impl Layout {
         }
 
         if let Some(i) = hit {
-            panels[i].interact(file_logger, input, pop_up_panel_frame, text_buf);
+            let action = panels[i].interact(file_logger, input, pop_up_panel_frame, text_buf);
+            self.layout_panels = panels;
+            return action;
         }
 
         self.layout_panels = panels;
+        Action::None
     }
-
-
 
     pub fn draw(&mut self, screen: &mut ScreenBuf, pop_pup: &mut PopUpPanelFrame, file_logger: &mut FileLogger, text_buf: &mut TextBuf) {
         let mut panels = std::mem::take(&mut self.layout_panels);
@@ -63,8 +69,6 @@ impl Layout {
 
         for item in panels.iter_mut() {
             item.draw(self, screen, text_buf);
-
-
             file_logger.log("draw panel");
         }
 
@@ -79,8 +83,7 @@ impl Layout {
     pub fn add_panel(&mut self, panel: Box<dyn LayoutPanel>) {
         self.layout_panels.push(panel);
     }
-    
-    
+
     pub fn get_root_rect(&self) -> Rect {
         self.root
     }

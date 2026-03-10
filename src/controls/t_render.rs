@@ -1,4 +1,4 @@
-﻿use crate::screen_buf::ScreenBuf;
+﻿use crate::screen_buffer::ScreenBuf;
 use crate::ui::c_rect::Rect;
 
 pub trait Render{ 

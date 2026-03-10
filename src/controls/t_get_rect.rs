@@ -1,7 +1,7 @@
 ﻿use crate::controls::t_render::Render;
 use crate::input::Input;
 use crate::logger::FileLogger;
-use crate::screen_buf::ScreenBuf;
+use crate::screen_buffer::ScreenBuf;
 use crate::ui::c_frame::Frame;
 use crate::ui::c_rect::Rect;
 

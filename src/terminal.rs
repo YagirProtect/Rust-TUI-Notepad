@@ -2,7 +2,7 @@
 use std::io::{stdout, Stdout, Write};
 use crossterm::{
     cursor::{Hide, MoveTo, Show},
-    event::{self, Event, KeyEventKind},
+    event::{self, DisableBracketedPaste, EnableBracketedPaste, Event, KeyEventKind},
     execute,
     terminal::{
         disable_raw_mode, enable_raw_mode, size, Clear, ClearType, EnterAlternateScreen,
@@ -21,7 +21,7 @@ pub struct TermGuard;
 impl Drop for TermGuard {
     fn drop(&mut self) {
         let mut out = stdout();
-        let _ = execute!(out, Show, LeaveAlternateScreen);
+        let _ = execute!(out, DisableBracketedPaste, Show, LeaveAlternateScreen);
         let _ = disable_raw_mode();
     }
 }
@@ -30,7 +30,12 @@ impl Terminal {
     pub fn enter() -> std::io::Result<(TermGuard, Terminal)> {
         enable_raw_mode()?;
         let mut out = stdout();
-        execute!(out, EnableMouseCapture, SetCursorStyle::SteadyBlock)?;
+        execute!(
+            out,
+            EnableMouseCapture,
+            EnableBracketedPaste,
+            SetCursorStyle::SteadyBlock
+        )?;
         out.flush()?;
         Ok((TermGuard, Terminal { out }))
     }

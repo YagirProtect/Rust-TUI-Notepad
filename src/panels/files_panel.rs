@@ -8,7 +8,7 @@ use crate::input::Input;
 use crate::logger::FileLogger;
 use crate::panels::menu_panel::LayoutPanel;
 use crate::panels::pop_up_panel::PopUpPanelFrame;
-use crate::screen_buf::ScreenBuf;
+use crate::screen_buffer::ScreenBuf;
 use crate::text_buffer::TextBuf;
 use crate::ui::c_frame::{EFrameAxis, Frame};
 use crate::ui::c_layout::Layout;

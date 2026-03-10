@@ -1,5 +1,6 @@
-﻿use crate::config::Config;
+use crate::config::Config;
 use crate::controls::t_render::Render;
+use crate::e_actions::Action;
 use crate::fs::FileSystem;
 use crate::input::Input;
 use crate::logger::FileLogger;
@@ -7,8 +8,9 @@ use crate::panels::files_panel::FilesFrame;
 use crate::panels::menu_panel::{LayoutPanel, MenuFrame};
 use crate::panels::pop_up_panel::PopUpPanelFrame;
 use crate::panels::text_editor_panel::TextEditorFrame;
-use crate::screen_buf::ScreenBuf;
+use crate::screen_buffer::ScreenBuf;
 use crate::terminal::Terminal;
+use crate::text_buffer::TextBuf;
 use crate::ui::c_layout::Layout;
 use crate::ui::c_rect::Rect;
 use crossterm::cursor::{Hide, MoveTo, Show};
@@ -16,7 +18,6 @@ use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use crossterm::{event, execute};
 use std::io::Write;
 use std::time::Duration;
-use crate::text_buffer::TextBuf;
 
 pub struct App{
     pub logger: FileLogger,
@@ -63,60 +64,23 @@ impl App{
             }
 
             if event::poll(Duration::from_millis(16))? {
-                let ev = event::read()?;
-
-                match ev {
-                    Event::Key(k) => {
-
-                        match k.kind {
-                            KeyEventKind::Press => {
-                                self.input.handle_input(k.code, &mut self.screen_buf, &mut self.text_buffer);
-                                dirty = true;
-
-                            }
-                            KeyEventKind::Repeat => {}
-                            KeyEventKind::Release => {
-                                dirty = true;
-                            }
-                        }
+                loop {
+                    let ev = event::read()?;
+                    dirty |= self.handle_event(ev, &mut w, &mut h);
+                    if !event::poll(Duration::from_millis(0))? {
+                        break;
                     }
-
-                    Event::Resize(nw, nh) => {
-                        w = nw; h = nh;
-                        self.screen_buf.resize(w, h);
-
-                        if w > 0 { self.input.cursor_x = self.input.cursor_x.min(w - 1); }
-                        if h > 0 { self.input.cursor_y = self.input.cursor_y.min(h - 1); }
-
-                        dirty = true;
-                    }
-
-                    Event::Mouse(m) => match m.kind {
-                        MouseEventKind::Down(MouseButton::Left) => {
-                            self.input.cursor_x = m.column.min(w.saturating_sub(1));
-                            self.input.cursor_y = m.row.min(h.saturating_sub(1));
-                            self.input.clicked = Some((m.column, m.row));
-                            dirty = true;
-                        }
-                        MouseEventKind::Up(MouseButton::Left) => {
-                            dirty = true;
-                        }
-                        _ => {} // moved/scroll игнорим
-                    },
-
-                    _ => {}
                 }
             }
 
-            // если событий нет, но нужно “додёрнуть” кадры — тоже рисуем
             if !dirty {
                 continue;
             }
 
             self.screen_buf.clear();
 
-
-            self.draw_ui();
+            let action = self.draw_ui();
+            self.handle_action(action);
 
             execute!(term.out, Hide, MoveTo(0, 0))?;
             self.screen_buf.present(&mut term.out)?;
@@ -124,7 +88,83 @@ impl App{
             term.out.flush()?;
 
             self.input.clicked = None;
-            self.input.last_character = None;
+            self.input.pending_text.clear();
+            self.input.text_cursor_move = None;
+            self.input.key_command = None;
+        }
+    }
+
+    fn handle_event(&mut self, ev: Event, w: &mut u16, h: &mut u16) -> bool {
+        match ev {
+            Event::Paste(text) => {
+                self.input.arm_paste_suppression(&text);
+                self.input.pending_text.push_str(&text);
+                true
+            }
+            Event::Key(k) => {
+                if k.kind == KeyEventKind::Press
+                    && self.input.consume_paste_suppression_key(k.code, k.modifiers)
+                {
+                    return false;
+                }
+
+                match k.kind {
+                    KeyEventKind::Press => {
+                        self.input.handle_input(k.code, k.modifiers, &mut self.screen_buf, &mut self.text_buffer);
+                        true
+                    }
+                    KeyEventKind::Repeat => false,
+                    KeyEventKind::Release => true,
+                }
+            }
+            Event::Resize(nw, nh) => {
+                *w = nw;
+                *h = nh;
+                self.screen_buf.resize(*w, *h);
+
+                if *w > 0 { self.input.cursor_x = self.input.cursor_x.min(*w - 1); }
+                if *h > 0 { self.input.cursor_y = self.input.cursor_y.min(*h - 1); }
+
+                true
+            }
+            Event::Mouse(m) => match m.kind {
+                MouseEventKind::Down(MouseButton::Left) => {
+                    self.input.cursor_x = m.column.min(w.saturating_sub(1));
+                    self.input.cursor_y = m.row.min(h.saturating_sub(1));
+                    self.input.clicked = Some((m.column, m.row));
+                    true
+                }
+                MouseEventKind::Up(MouseButton::Left) => true,
+                _ => false,
+            },
+            _ => false,
+        }
+    }
+
+    fn handle_action(&mut self, action: Action) {
+        match action {
+            Action::None => {}
+            Action::Copy => {
+                self.text_buffer.copy_selection();
+            }
+            Action::Cut => {
+                self.text_buffer.cut_selection();
+            }
+            Action::Paste => {
+                self.text_buffer.paste_from_clipboard();
+            }
+            Action::Undo => {
+                self.text_buffer.undo();
+            }
+            Action::Redo => {
+                self.text_buffer.redo();
+            }
+            Action::NewFile => {
+                self.text_buffer = TextBuf::default();
+            }
+            Action::OpenFile | Action::SaveFile | Action::Delete | Action::Find | Action::Replace | Action::FAQ => {
+                self.logger.log(format!("Unhandled action: {:?}", action));
+            }
         }
     }
 
@@ -148,16 +188,13 @@ impl App{
         layout.add_panel(Box::new(text_editor));
     }
 
-
-
-
-    fn draw_ui(&mut self) {
+    fn draw_ui(&mut self) -> Action {
         let root_rect = Rect::new(0, 0, self.screen_buf.w, self.screen_buf.h);
         let mut layout = Layout::new(root_rect);
         self.create_layout(&mut layout);
 
-        layout.interact(&mut self.logger, &mut self.input, &mut self.pop_up, &mut self.text_buffer);
-
+        let action = layout.interact(&mut self.logger, &mut self.input, &mut self.pop_up, &mut self.text_buffer);
         layout.draw(&mut self.screen_buf, &mut self.pop_up, &mut self.logger, &mut self.text_buffer);
+        action
     }
 }

@@ -4,7 +4,7 @@ use crate::characters::{BORDER_DOUBLE, BORDER_ROUNDED};
 use crate::controls::t_get_rect::Control;
 use crate::controls::t_render::Render;
 use crate::logger::FileLogger;
-use crate::screen_buf::{Color, ScreenBuf};
+use crate::screen_buffer::{Color, ScreenBuf};
 use crate::ui::c_rect::Rect;
 
 static ID: AtomicU16 = AtomicU16::new(0);

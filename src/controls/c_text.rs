@@ -1,7 +1,7 @@
 ﻿use crossterm::style::Stylize;
 use crate::controls::t_get_rect::{Control, GetRect};
 use crate::controls::t_render::Render;
-use crate::screen_buf::{Color, ScreenBuf};
+use crate::screen_buffer::{Color, ScreenBuf};
 use crate::ui::c_rect::Rect;
 
 #[derive(Debug)]

@@ -4,7 +4,7 @@ mod fs;
 mod config;
 mod logger;
 mod app;
-mod screen_buf;
+mod screen_buffer;
 mod terminal;
 mod input;
 mod ui;
