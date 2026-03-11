@@ -12,7 +12,8 @@ use crate::ui::c_rect::Rect;
 pub struct Button{
     text_box: TextBox,
     is_clicked: bool,
-    rect: Rect
+    rect: Rect,
+    persistent_color: Option<Color>,
 }
 
 impl Button {
@@ -44,15 +45,22 @@ impl Control for Button {
 
 
     fn calculate_control(&mut self, logger: &mut FileLogger, input: &Input) {
-        self.text_box.set_color(Color::White);
+        self.text_box
+            .set_color(self.persistent_color.unwrap_or(Color::White));
         self.is_clicked = false;
         if self.get_rect().contains(input.cursor_x, input.cursor_y) {
-            if (input.clicked.is_some()) {
+            if input.mouse_down.is_some() {
                 self.text_box.set_color(Color::Blue);
-                self.is_clicked = true;
             } else {
                 self.text_box.set_color(Color::Yellow);
             }
+
+            if input.mouse_down.is_some() && input.mouse_released.is_some() {
+                self.is_clicked = true;
+            }
+        } else if input.mouse_down.is_some() {
+            self.text_box
+                .set_color(self.persistent_color.unwrap_or(Color::White));
         }
     }
 }
@@ -62,7 +70,14 @@ impl Button {
         Self{
             text_box: TextBox::new(text),
             is_clicked: false,
-            rect: Rect::default()
+            rect: Rect::default(),
+            persistent_color: None,
         }
+    }
+
+    pub fn set_persistent_color(&mut self, color: Option<Color>) {
+        self.persistent_color = color;
+        self.text_box
+            .set_color(self.persistent_color.unwrap_or(Color::White));
     }
 }

@@ -27,6 +27,7 @@ pub struct PopUpPanelFrame{
     show: bool,
 
     is_clicked: bool,
+    layout_dirty: bool,
 }
 
 impl LayoutPanel for PopUpPanelFrame {
@@ -56,6 +57,7 @@ impl LayoutPanel for PopUpPanelFrame {
                 btn.create_control(&mut self.frame);
                 self.buttons.push(btn);
             }
+            self.layout_dirty = false;
         }
     }
 
@@ -83,9 +85,9 @@ impl LayoutPanel for PopUpPanelFrame {
         for btn in self.buttons.iter_mut() {
             btn.calculate_control(file_logger, input);
             if (btn.clicked()){
-                self.is_clicked = true;
-
-                return self.items[id].1;
+                let action = self.items[id].1.clone();
+                self.hide();
+                return action;
             }
             id += 1;
         }
@@ -101,12 +103,10 @@ impl LayoutPanel for PopUpPanelFrame {
         if (!self.active){
             return;
         }
-        if (self.show) {
-            for button in self.buttons.drain(..) {
-                self.frame.add_control(Box::new(button));
-            }
-            self.frame.draw(&Rect::default(), screen);
+        for button in self.buttons.drain(..) {
+            self.frame.add_control(Box::new(button));
         }
+        self.frame.draw(&Rect::default(), screen);
         self.show = true;
     }
 }
@@ -123,15 +123,29 @@ impl PopUpPanelFrame{
             buttons: vec![],
             is_clicked: false,
             show: false,
+            layout_dirty: false,
         }
     }
 
+    pub fn hide(&mut self) {
+        self.active = false;
+        self.is_free = false;
+        self.is_clicked = false;
+        self.show = false;
+        self.layout_dirty = false;
+    }
+
+    pub fn needs_layout(&self) -> bool {
+        self.layout_dirty
+    }
 
     pub fn show(&mut self, items: Vec<(String, Action)>, file_logger: &mut FileLogger, input: &Input){
         self.items = items;
         self.active = true;
-        self.is_free = false;
-        self.show = false;
+        self.is_free = true;
+        self.show = true;
+        self.is_clicked = false;
+        self.layout_dirty = true;
         file_logger.log(format!("show {}", self.items.len()));
         self.pos = (input.cursor_x, input.cursor_y);
     }

@@ -1,11 +1,18 @@
-﻿#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum Action{
+use std::path::PathBuf;
+
+#[derive(Clone, Eq, PartialEq, Debug)]
+pub enum Action {
     None,
-    
+
     NewFile,
+    Exit,
     SaveFile,
+    SaveFileAs,
     OpenFile,
-    
+    OpenInExplorer,
+    OpenPath(PathBuf),
+    RemoveRecentPath(PathBuf),
+
     Copy,
     Paste,
     Delete,
@@ -14,5 +21,7 @@ pub enum Action{
     Cut,
     Find,
     Replace,
+    ToggleKeywordHighlight,
     FAQ,
+    OpenUrl(String),
 }

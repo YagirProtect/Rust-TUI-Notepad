@@ -4,6 +4,8 @@ mod fs;
 mod config;
 mod logger;
 mod app;
+mod app_actions;
+mod app_dialogs;
 mod screen_buffer;
 mod terminal;
 mod input;
@@ -12,6 +14,8 @@ mod controls;
 mod characters;
 mod e_actions;
 mod panels;
+mod shortcuts;
+mod syntax_highlight;
 mod text_buffer;
 
 fn main(){

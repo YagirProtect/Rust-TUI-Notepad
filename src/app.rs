@@ -1,22 +1,26 @@
 use crate::config::Config;
 use crate::controls::t_render::Render;
+use crate::app_actions::AppActions;
 use crate::e_actions::Action;
 use crate::fs::FileSystem;
-use crate::input::Input;
+use crate::input::{EInputMode, EKeyCommand, Input};
 use crate::logger::FileLogger;
 use crate::panels::files_panel::FilesFrame;
 use crate::panels::menu_panel::{LayoutPanel, MenuFrame};
 use crate::panels::pop_up_panel::PopUpPanelFrame;
+use crate::panels::search_panel::SearchPanelFrame;
 use crate::panels::text_editor_panel::TextEditorFrame;
 use crate::screen_buffer::ScreenBuf;
+use crate::shortcuts::ShortcutMap;
 use crate::terminal::Terminal;
 use crate::text_buffer::TextBuf;
 use crate::ui::c_layout::Layout;
 use crate::ui::c_rect::Rect;
 use crossterm::cursor::{Hide, MoveTo, Show};
-use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
+use crossterm::event::{Event, KeyCode, KeyEventKind, KeyModifiers, ModifierKeyCode, MouseButton, MouseEventKind};
 use crossterm::{event, execute};
 use std::io::Write;
+use std::path::PathBuf;
 use std::time::Duration;
 
 pub struct App{
@@ -26,7 +30,11 @@ pub struct App{
     pub screen_buf: ScreenBuf,
     pub input: Input,
     pub pop_up: PopUpPanelFrame,
+    pub search_panel: SearchPanelFrame,
     pub text_buffer: TextBuf,
+    pub(crate) current_file_path: PathBuf,
+    pub(crate) saved_version: u64,
+    pub(crate) should_exit: bool,
 }
 
 impl App{
@@ -34,20 +42,30 @@ impl App{
 
         let mut logger = FileLogger::new();
         let fs = FileSystem::new();
-        let config: Config = Config::new(&mut logger);
+        let mut config: Config = Config::new(&mut logger);
         let (x, y) = config.get_win_size();
         let screen_buf = ScreenBuf::new(x, y);
-        let input = Input::default();
+        let input = Input::new(ShortcutMap::from_bindings(config.hotkeys(), &mut logger));
+        let current_file_path = FileSystem::next_new_document_path(None);
+        if config.get_last_files().is_empty() {
+            config.ensure_last_file(current_file_path.to_string_lossy().as_ref(), &mut logger);
+        }
         logger.log("App created");
-        Self{
+        let mut app = Self{
             logger,
             fs,
             config,
             screen_buf,
             input,
             pop_up: PopUpPanelFrame::new(),
-            text_buffer: TextBuf::default()
-        }
+            search_panel: SearchPanelFrame::new(),
+            text_buffer: TextBuf::default(),
+            current_file_path,
+            saved_version: 0,
+            should_exit: false,
+        };
+        app.input.change_mode(EInputMode::TextEditor);
+        app
     }
 
     pub fn run(&mut self) -> Result<(), Box<dyn std::error::Error>> {
@@ -73,21 +91,36 @@ impl App{
                 }
             }
 
+            if self.input.mode == EInputMode::TextEditor
+                && self.input.mouse_down.is_some()
+                && self.input.text_mouse_anchor.is_some()
+            {
+                dirty = true;
+            }
+
             if !dirty {
                 continue;
             }
 
             self.screen_buf.clear();
-
-            let action = self.draw_ui();
-            self.handle_action(action);
+            self.draw_ui();
 
             execute!(term.out, Hide, MoveTo(0, 0))?;
             self.screen_buf.present(&mut term.out)?;
             execute!(term.out, Show, MoveTo(self.input.cursor_x, self.input.cursor_y))?;
             term.out.flush()?;
 
+            if self.should_exit {
+                break Ok(());
+            }
+
+            if self.input.mouse_released.is_some() {
+                self.input.mouse_down = None;
+                self.input.text_mouse_anchor = None;
+            }
             self.input.clicked = None;
+            self.input.mouse_released = None;
+            self.input.mouse_scroll = None;
             self.input.pending_text.clear();
             self.input.text_cursor_move = None;
             self.input.key_command = None;
@@ -102,6 +135,31 @@ impl App{
                 true
             }
             Event::Key(k) => {
+                match k.code {
+                    KeyCode::Modifier(ModifierKeyCode::LeftShift)
+                    | KeyCode::Modifier(ModifierKeyCode::RightShift) => {
+                        self.input.is_shift = k.kind != KeyEventKind::Release;
+                    }
+                    KeyCode::Modifier(ModifierKeyCode::LeftControl)
+                    | KeyCode::Modifier(ModifierKeyCode::RightControl) => {
+                        self.input.is_ctrl = k.kind != KeyEventKind::Release;
+                    }
+                    KeyCode::Modifier(ModifierKeyCode::LeftAlt)
+                    | KeyCode::Modifier(ModifierKeyCode::RightAlt) => {
+                        self.input.is_alt = k.kind != KeyEventKind::Release;
+                    }
+                    _ => {
+                        self.input.is_shift = k.modifiers.contains(KeyModifiers::SHIFT);
+                        self.input.is_ctrl = k.modifiers.contains(KeyModifiers::CONTROL);
+                        self.input.is_alt = k.modifiers.contains(KeyModifiers::ALT);
+                    }
+                }
+
+                if self.search_panel.active && k.kind == KeyEventKind::Press && k.code == KeyCode::Esc {
+                    self.search_panel.close(&mut self.input, &mut self.text_buffer);
+                    return true;
+                }
+
                 if k.kind == KeyEventKind::Press
                     && self.input.consume_paste_suppression_key(k.code, k.modifiers)
                 {
@@ -110,7 +168,32 @@ impl App{
 
                 match k.kind {
                     KeyEventKind::Press => {
-                        self.input.handle_input(k.code, k.modifiers, &mut self.screen_buf, &mut self.text_buffer);
+                        match self.input.mode {
+                            EInputMode::SearchQueryEditor | EInputMode::SearchReplaceEditor => {
+                                self.input.handle_input(
+                                    k.code,
+                                    k.modifiers,
+                                    &mut self.screen_buf,
+                                    self.search_panel.active_buffer_mut(self.input.mode),
+                                );
+                            }
+                            _ => {
+                                self.input.handle_input(
+                                    k.code,
+                                    k.modifiers,
+                                    &mut self.screen_buf,
+                                    &mut self.text_buffer,
+                                );
+                            }
+                        }
+
+                        if let Some(action) = AppActions::action_from_key_command(self.input.key_command) {
+                            AppActions::handle_action(self, action);
+                            self.input.key_command = None;
+                        } else if self.input.key_command == Some(EKeyCommand::Find) {
+                            self.search_panel.open_find(&mut self.input, &mut self.text_buffer);
+                            self.input.key_command = None;
+                        }
                         true
                     }
                     KeyEventKind::Repeat => false,
@@ -128,43 +211,63 @@ impl App{
                 true
             }
             Event::Mouse(m) => match m.kind {
+                MouseEventKind::Moved => {
+                    self.input.cursor_x = m.column.min(w.saturating_sub(1));
+                    self.input.cursor_y = m.row.min(h.saturating_sub(1));
+                    self.input.is_shift = self.input.is_shift || m.modifiers.contains(KeyModifiers::SHIFT);
+                    self.input.is_ctrl = self.input.is_ctrl || m.modifiers.contains(KeyModifiers::CONTROL);
+                    self.input.is_alt = m.modifiers.contains(KeyModifiers::ALT);
+                    true
+                }
                 MouseEventKind::Down(MouseButton::Left) => {
                     self.input.cursor_x = m.column.min(w.saturating_sub(1));
                     self.input.cursor_y = m.row.min(h.saturating_sub(1));
+                    self.input.is_shift = self.input.is_shift || m.modifiers.contains(KeyModifiers::SHIFT);
+                    self.input.is_ctrl = self.input.is_ctrl || m.modifiers.contains(KeyModifiers::CONTROL);
+                    self.input.is_alt = m.modifiers.contains(KeyModifiers::ALT);
                     self.input.clicked = Some((m.column, m.row));
+                    self.input.mouse_down = Some((m.column, m.row));
+                    self.input.mouse_released = None;
                     true
                 }
-                MouseEventKind::Up(MouseButton::Left) => true,
+                MouseEventKind::Up(MouseButton::Left) => {
+                    self.input.cursor_x = m.column.min(w.saturating_sub(1));
+                    self.input.cursor_y = m.row.min(h.saturating_sub(1));
+                    self.input.is_shift = self.input.is_shift || m.modifiers.contains(KeyModifiers::SHIFT);
+                    self.input.is_ctrl = self.input.is_ctrl || m.modifiers.contains(KeyModifiers::CONTROL);
+                    self.input.is_alt = m.modifiers.contains(KeyModifiers::ALT);
+                    self.input.mouse_released = Some((m.column, m.row));
+                    true
+                }
+                MouseEventKind::Drag(MouseButton::Left) => {
+                    self.input.cursor_x = m.column.min(w.saturating_sub(1));
+                    self.input.cursor_y = m.row.min(h.saturating_sub(1));
+                    self.input.is_shift = self.input.is_shift || m.modifiers.contains(KeyModifiers::SHIFT);
+                    self.input.is_ctrl = self.input.is_ctrl || m.modifiers.contains(KeyModifiers::CONTROL);
+                    self.input.is_alt = m.modifiers.contains(KeyModifiers::ALT);
+                    true
+                }
+                MouseEventKind::ScrollUp => {
+                    self.input.cursor_x = m.column.min(w.saturating_sub(1));
+                    self.input.cursor_y = m.row.min(h.saturating_sub(1));
+                    self.input.is_shift = self.input.is_shift || m.modifiers.contains(KeyModifiers::SHIFT);
+                    self.input.is_ctrl = self.input.is_ctrl || m.modifiers.contains(KeyModifiers::CONTROL);
+                    self.input.is_alt = m.modifiers.contains(KeyModifiers::ALT);
+                    self.input.mouse_scroll = Some(if self.input.is_alt { (-3, 0) } else { (0, -3) });
+                    true
+                }
+                MouseEventKind::ScrollDown => {
+                    self.input.cursor_x = m.column.min(w.saturating_sub(1));
+                    self.input.cursor_y = m.row.min(h.saturating_sub(1));
+                    self.input.is_shift = self.input.is_shift || m.modifiers.contains(KeyModifiers::SHIFT);
+                    self.input.is_ctrl = self.input.is_ctrl || m.modifiers.contains(KeyModifiers::CONTROL);
+                    self.input.is_alt = m.modifiers.contains(KeyModifiers::ALT);
+                    self.input.mouse_scroll = Some(if self.input.is_alt { (3, 0) } else { (0, 3) });
+                    true
+                }
                 _ => false,
             },
             _ => false,
-        }
-    }
-
-    fn handle_action(&mut self, action: Action) {
-        match action {
-            Action::None => {}
-            Action::Copy => {
-                self.text_buffer.copy_selection();
-            }
-            Action::Cut => {
-                self.text_buffer.cut_selection();
-            }
-            Action::Paste => {
-                self.text_buffer.paste_from_clipboard();
-            }
-            Action::Undo => {
-                self.text_buffer.undo();
-            }
-            Action::Redo => {
-                self.text_buffer.redo();
-            }
-            Action::NewFile => {
-                self.text_buffer = TextBuf::default();
-            }
-            Action::OpenFile | Action::SaveFile | Action::Delete | Action::Find | Action::Replace | Action::FAQ => {
-                self.logger.log(format!("Unhandled action: {:?}", action));
-            }
         }
     }
 
@@ -177,6 +280,11 @@ impl App{
 
 
         let mut files_panel = FilesFrame::default();
+        files_panel.set_current_document(
+            self.current_file_path.clone(),
+            AppActions::is_current_document_dirty(self),
+            AppActions::is_current_document_virtual(self),
+        );
         files_panel.create_layout(layout, &mut self.config);
 
         let mut text_editor = TextEditorFrame::default();
@@ -188,13 +296,38 @@ impl App{
         layout.add_panel(Box::new(text_editor));
     }
 
-    fn draw_ui(&mut self) -> Action {
+    fn draw_ui(&mut self) {
         let root_rect = Rect::new(0, 0, self.screen_buf.w, self.screen_buf.h);
         let mut layout = Layout::new(root_rect);
         self.create_layout(&mut layout);
 
-        let action = layout.interact(&mut self.logger, &mut self.input, &mut self.pop_up, &mut self.text_buffer);
+        let search_consumed = self.search_panel.interact(
+            root_rect,
+            &mut self.input,
+            &mut self.text_buffer,
+            &mut self.logger,
+        );
+        let action = if search_consumed
+            || self.search_panel.hit(root_rect, self.input.cursor_x, self.input.cursor_y)
+        {
+            Action::None
+        } else {
+            layout.interact(&mut self.logger, &mut self.input, &mut self.pop_up, &mut self.text_buffer)
+        };
+
+        let refresh_layout = action != Action::None;
+        AppActions::handle_action(self, action);
+
+        if refresh_layout {
+            layout = Layout::new(root_rect);
+            self.create_layout(&mut layout);
+        }
+
+        if self.pop_up.active && self.pop_up.needs_layout() {
+            self.pop_up.create_layout(&mut layout, &mut self.config);
+        }
+
         layout.draw(&mut self.screen_buf, &mut self.pop_up, &mut self.logger, &mut self.text_buffer);
-        action
+        self.search_panel.draw(root_rect, &mut self.screen_buf, &mut self.input, &mut self.text_buffer);
     }
 }

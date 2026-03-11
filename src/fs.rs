@@ -1,42 +1,36 @@
-﻿use std::env;
+use std::env;
 use std::fs::{File, OpenOptions};
+use std::io;
 use std::path::PathBuf;
 
 #[derive(Default)]
-pub struct FileSystem{}
+pub struct FileSystem {}
 
 impl FileSystem {
     pub fn new() -> Self {
-        match std::fs::create_dir(Self::get_notepad_dir()) {
-            Ok(_) => {}
-            Err(_) => {}
-        };
-
-
+        let _ = std::fs::create_dir(Self::get_notepad_dir());
+        let _ = std::fs::create_dir_all(Self::get_documents_dir());
         Self::default()
     }
 
     fn base_app_dir() -> PathBuf {
-        // Windows: %APPDATA%
         #[cfg(target_os = "windows")]
         {
-            if let Some(p) = env::var_os("APPDATA") {
-                return PathBuf::from(p);
+            if let Some(path) = env::var_os("APPDATA") {
+                return PathBuf::from(path);
             }
         }
 
-        // Linux: $XDG_CONFIG_HOME или ~/.config
         #[cfg(target_os = "linux")]
         {
-            if let Some(p) = env::var_os("XDG_CONFIG_HOME") {
-                return PathBuf::from(p);
+            if let Some(path) = env::var_os("XDG_CONFIG_HOME") {
+                return PathBuf::from(path);
             }
             if let Some(home) = env::var_os("HOME") {
                 return PathBuf::from(home).join(".config");
             }
         }
 
-        // macOS: ~/Library/Application Support
         #[cfg(target_os = "macos")]
         {
             if let Some(home) = env::var_os("HOME") {
@@ -46,7 +40,6 @@ impl FileSystem {
             }
         }
 
-        // ???? wtf
         env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
     }
 
@@ -57,19 +50,52 @@ impl FileSystem {
     pub fn get_log_file_path() -> PathBuf {
         Self::get_notepad_dir().join("log.txt")
     }
+
     pub fn get_config_file_path() -> PathBuf {
         Self::get_notepad_dir().join(".config")
     }
 
+    pub fn get_documents_dir() -> PathBuf {
+        Self::get_notepad_dir().join("documents")
+    }
+
+    pub fn ensure_documents_dir() -> PathBuf {
+        let dir = Self::get_documents_dir();
+        std::fs::create_dir_all(&dir)
+            .unwrap_or_else(|_| panic!("Failed to create {} directory!", dir.display()));
+        dir
+    }
+
+    pub fn next_new_document_path(current_path: Option<&PathBuf>) -> PathBuf {
+        let dir = Self::ensure_documents_dir();
+        let base_name = "New Document";
+
+        for index in 0..=9999 {
+            let file_name = if index == 0 {
+                format!("{}.txt", base_name)
+            } else {
+                format!("{} {}.txt", base_name, index)
+            };
+
+            let candidate = dir.join(file_name);
+            if candidate.exists() {
+                continue;
+            }
+
+            if current_path.is_some_and(|path| path == &candidate) {
+                continue;
+            }
+
+            return candidate;
+        }
+
+        dir.join("New Document Overflow.txt")
+    }
 
     pub fn create_file(path: PathBuf) -> File {
         match File::create(&path) {
-            Ok(file) => {
-                return file;
-            }
-            Err(_) => {
-                panic!("Failed to create {} file!", &path.display());
-            }
+            Ok(file) => file,
+            Err(_) => panic!("Failed to create {} file!", path.display()),
         }
     }
 
@@ -82,22 +108,35 @@ impl FileSystem {
         options.create(true);
 
         if clear {
-            options.write(true).truncate(true); // <-- обязательно write(true)
+            options.write(true).truncate(true);
         } else {
-            options.append(true);               // append сам включает запись
+            options.append(true);
         }
 
         match options.open(&path) {
             Ok(file) => file,
-            Err(e) => panic!("Failed to open {} file: {}", path.display(), e),
+            Err(error) => panic!("Failed to open {} file: {}", path.display(), error),
         }
     }
 
     pub fn create_dir(path: PathBuf) {
-        if (path.exists()) {
+        if path.exists() {
             return;
         }
 
-        std::fs::create_dir(&path).unwrap_or_else(|_| panic!("Failed to create {} directory!", &path.display()));
+        std::fs::create_dir(&path)
+            .unwrap_or_else(|_| panic!("Failed to create {} directory!", path.display()));
+    }
+
+    pub fn read_text_file(path: &PathBuf) -> io::Result<String> {
+        std::fs::read_to_string(path)
+    }
+
+    pub fn write_text_file(path: &PathBuf, text: &str) -> io::Result<()> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+
+        std::fs::write(path, text)
     }
 }

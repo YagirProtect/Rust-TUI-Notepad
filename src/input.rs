@@ -2,17 +2,28 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyModifiers};
 use crate::screen_buffer::ScreenBuf;
+use crate::shortcuts::ShortcutMap;
 use crate::text_buffer::TextBuf;
 
-#[derive(Default, PartialEq)]
+#[derive(Copy, Clone, Default, PartialEq)]
 pub enum EInputMode{
     #[default]
     FreeMove,
     TextEditor,
+    SearchQueryEditor,
+    SearchReplaceEditor,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub enum EKeyCommand {
+    Find,
+    Replace,
+    FindNext,
+    NewFile,
+    OpenFile,
+    OpenInExplorer,
+    SaveFile,
+    SaveFileAs,
     Undo,
     Redo,
     SelectAll,
@@ -21,24 +32,72 @@ pub enum EKeyCommand {
     Paste,
 }
 
-#[derive(Default)]
 pub struct Input{
     pub cursor_x: u16,
     pub cursor_y: u16,
 
     pub clicked:Option<(u16, u16)>,
+    pub mouse_down: Option<(u16, u16)>,
+    pub mouse_released: Option<(u16, u16)>,
+    pub mouse_scroll: Option<(i32, i32)>,
 
     pub mode: EInputMode,
 
     pub pending_text: String,
     pub is_shift: bool,
+    pub is_ctrl: bool,
+    pub is_alt: bool,
     pub text_cursor_move: Option<((usize, usize), (usize, usize))>,
     pub key_command: Option<EKeyCommand>,
+    pub text_mouse_anchor: Option<(usize, usize)>,
     paste_suppression_remaining: usize,
     paste_suppression_started: Option<Instant>,
+    shortcut_map: ShortcutMap,
+}
+
+impl Default for Input {
+    fn default() -> Self {
+        Self {
+            cursor_x: 0,
+            cursor_y: 0,
+            clicked: None,
+            mouse_down: None,
+            mouse_released: None,
+            mouse_scroll: None,
+            mode: EInputMode::FreeMove,
+            pending_text: String::new(),
+            is_shift: false,
+            is_ctrl: false,
+            is_alt: false,
+            text_cursor_move: None,
+            key_command: None,
+            text_mouse_anchor: None,
+            paste_suppression_remaining: 0,
+            paste_suppression_started: None,
+            shortcut_map: ShortcutMap::default(),
+        }
+    }
 }
 
 impl Input {
+    pub fn new(shortcut_map: ShortcutMap) -> Self {
+        Self {
+            shortcut_map,
+            ..Self::default()
+        }
+    }
+
+    fn is_text_mode(&self) -> bool {
+        matches!(
+            self.mode,
+            EInputMode::TextEditor | EInputMode::SearchQueryEditor | EInputMode::SearchReplaceEditor
+        )
+    }
+
+    pub fn is_search_mode(&self) -> bool {
+        matches!(self.mode, EInputMode::SearchQueryEditor | EInputMode::SearchReplaceEditor)
+    }
+
     pub fn clamp_cursor(&mut self, min_x: u16, max_x: u16, min_y: u16, max_y: u16) {
         if (self.cursor_x < min_x){
             self.cursor_x = min_x;
@@ -102,50 +161,14 @@ impl Input {
         };
         true
     }
-
-    fn shortcut_char(code: KeyCode) -> Option<char> {
-        let KeyCode::Char(c) = code else {
-            return None;
-        };
-
-        c.to_lowercase().next()
-    }
-
-    fn resolve_key_command(code: KeyCode, modifiers: KeyModifiers) -> Option<EKeyCommand> {
-        if code == KeyCode::Insert && modifiers.contains(KeyModifiers::SHIFT) {
-            return Some(EKeyCommand::Paste);
-        }
-
-        if matches!(code, KeyCode::Char('v') | KeyCode::Char('V'))
-            && modifiers.contains(KeyModifiers::ALT)
-            && !modifiers.contains(KeyModifiers::CONTROL)
-        {
-            return Some(EKeyCommand::Paste);
-        }
-
-        let is_ctrl_shortcut = modifiers.contains(KeyModifiers::CONTROL) && !modifiers.contains(KeyModifiers::ALT);
-        if !is_ctrl_shortcut {
-            return None;
-        }
-
-        match Self::shortcut_char(code) {
-            Some('z') | Some('я') if modifiers.contains(KeyModifiers::SHIFT) => Some(EKeyCommand::Redo),
-            Some('z') | Some('я') => Some(EKeyCommand::Undo),
-            Some('y') | Some('н') => Some(EKeyCommand::Redo),
-            Some('a') | Some('ф') => Some(EKeyCommand::SelectAll),
-            Some('c') | Some('с') => Some(EKeyCommand::Copy),
-            Some('x') | Some('ч') => Some(EKeyCommand::Cut),
-            Some('v') | Some('м') => Some(EKeyCommand::Paste),
-            _ => None,
-        }
-    }
-
     pub fn handle_input(&mut self, k: KeyCode, modifiers: KeyModifiers, screen: &ScreenBuf, text_buf: &mut TextBuf) {
         self.is_shift = modifiers.contains(KeyModifiers::SHIFT);
+        self.is_ctrl = modifiers.contains(KeyModifiers::CONTROL);
+        self.is_alt = modifiers.contains(KeyModifiers::ALT);
         self.text_cursor_move = None;
         self.key_command = None;
 
-        if let Some(command) = Self::resolve_key_command(k, modifiers) {
+        if let Some(command) = self.shortcut_map.resolve(k, modifiers) {
             self.key_command = Some(command);
             return;
         }
@@ -211,36 +234,89 @@ impl Input {
                     }
                 }
             }
+            KeyCode::PageUp => {
+                if self.mode == EInputMode::FreeMove {
+                    let page = screen.h.saturating_sub(1).max(1);
+                    self.cursor_y = self.cursor_y.saturating_sub(page);
+                } else {
+                    let from = (text_buf.current_index, text_buf.line_index);
+                    text_buf.change_cursor_page(-1, screen.h.saturating_sub(1).max(1) as usize);
+                    let to = (text_buf.current_index, text_buf.line_index);
+                    if from != to {
+                        self.text_cursor_move = Some((from, to));
+                    }
+                }
+            }
+            KeyCode::PageDown => {
+                if self.mode == EInputMode::FreeMove {
+                    let page = screen.h.saturating_sub(1).max(1);
+                    let max_y = screen.h.saturating_sub(1);
+                    self.cursor_y = self.cursor_y.saturating_add(page).min(max_y);
+                } else {
+                    let from = (text_buf.current_index, text_buf.line_index);
+                    text_buf.change_cursor_page(1, screen.h.saturating_sub(1).max(1) as usize);
+                    let to = (text_buf.current_index, text_buf.line_index);
+                    if from != to {
+                        self.text_cursor_move = Some((from, to));
+                    }
+                }
+            }
+            KeyCode::Home => {
+                if self.mode == EInputMode::FreeMove {
+                    self.cursor_x = 0;
+                } else {
+                    let from = (text_buf.current_index, text_buf.line_index);
+                    text_buf.move_to_line_start();
+                    let to = (text_buf.current_index, text_buf.line_index);
+                    if from != to {
+                        self.text_cursor_move = Some((from, to));
+                    }
+                }
+            }
+            KeyCode::End => {
+                if self.mode == EInputMode::FreeMove {
+                    self.cursor_x = screen.w.saturating_sub(1);
+                } else {
+                    let from = (text_buf.current_index, text_buf.line_index);
+                    text_buf.move_to_line_end();
+                    let to = (text_buf.current_index, text_buf.line_index);
+                    if from != to {
+                        self.text_cursor_move = Some((from, to));
+                    }
+                }
+            }
 
             KeyCode::Enter => {
                 if self.mode == EInputMode::FreeMove {
                     self.clicked = Some((self.cursor_x, self.cursor_y));
+                } else if self.mode == EInputMode::SearchQueryEditor && !self.is_shift {
+                    self.key_command = Some(EKeyCommand::FindNext);
                 } else {
                     self.pending_text.push('\n');
                 }
             }
 
             KeyCode::Backspace => {
-                if self.mode == EInputMode::TextEditor {
+                if self.is_text_mode() {
                     text_buf.remove_char_backspace();
                 }
             }
 
             KeyCode::Delete => {
-                if self.mode == EInputMode::TextEditor {
+                if self.is_text_mode() {
                     text_buf.remove_char_delete();
                 }
             }
 
 
             KeyCode::Tab => {
-                if self.mode == EInputMode::TextEditor {
+                if self.is_text_mode() {
                     self.pending_text.push_str(&" ".repeat(4));
                 }
             }
 
             KeyCode::Char(c) => {
-                if self.mode == EInputMode::TextEditor && !is_ctrl_shortcut {
+                if self.is_text_mode() && !is_ctrl_shortcut {
                     self.pending_text.push(c);
                 }
             }

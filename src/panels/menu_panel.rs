@@ -18,12 +18,24 @@ use crate::ui::c_rect::Rect;
 pub struct MenuFrame{
     file_button: Option<Button>,
     edit_button: Option<Button>,
+    view_button: Option<Button>,
     info_button: Option<Button>,
+    file_items: Vec<(String, Action)>,
+    edit_items: Vec<(String, Action)>,
+    view_items: Vec<(String, Action)>,
+    info_items: Vec<(String, Action)>,
 
     frame: u16
 }
 
 impl MenuFrame {
+    fn menu_item(label: &str, shortcut: String, action: Action) -> (String, Action) {
+        if shortcut.is_empty() {
+            (format!(" {}", label), action)
+        } else {
+            (format!(" {:<20} {}", label, shortcut), action)
+        }
+    }
 
 }
 
@@ -48,6 +60,10 @@ impl LayoutPanel for MenuFrame {
         editBtn.create_control(open_frame);
         let mut delimiter2 = Delimiter::new();
         delimiter2.create_control(open_frame);
+        let mut viewBtn = Button::new(" VIEW ");
+        viewBtn.create_control(open_frame);
+        let mut delimiter_view = Delimiter::new();
+        delimiter_view.create_control(open_frame);
         let mut infoBtn = Button::new(" INFO ");
         infoBtn.create_control(open_frame);
         let mut delimiter3 = Delimiter::new();
@@ -55,6 +71,7 @@ impl LayoutPanel for MenuFrame {
 
         open_frame.add_control(Box::new(delimiter1));
         open_frame.add_control(Box::new(delimiter2));
+        open_frame.add_control(Box::new(delimiter_view));
         open_frame.add_control(Box::new(delimiter3));
 
         let frame_id = open_frame.frame_id;
@@ -63,7 +80,35 @@ impl LayoutPanel for MenuFrame {
 
         self.file_button = Some(fileBtn);
         self.edit_button = Some(editBtn);
+        self.view_button = Some(viewBtn);
         self.info_button = Some(infoBtn);
+        self.file_items = vec![
+            Self::menu_item("New File..", config.shortcuts_label_for("new_file"), Action::NewFile),
+            Self::menu_item("Open File..", config.shortcuts_label_for("open_file"), Action::OpenFile),
+            Self::menu_item("Save File..", config.shortcuts_label_for("save_file"), Action::SaveFile),
+            Self::menu_item("Save As..", config.shortcuts_label_for("save_file_as"), Action::SaveFileAs),
+            Self::menu_item("Open in Explorer..", config.shortcuts_label_for("open_in_explorer"), Action::OpenInExplorer),
+            Self::menu_item("Exit", String::new(), Action::Exit),
+        ];
+        self.edit_items = vec![
+            Self::menu_item("Undo", config.shortcuts_label_for("undo"), Action::Undo),
+            Self::menu_item("Redo", config.shortcuts_label_for("redo"), Action::Redo),
+            Self::menu_item("Cut", config.shortcuts_label_for("cut"), Action::Cut),
+            Self::menu_item("Copy", config.shortcuts_label_for("copy"), Action::Copy),
+            Self::menu_item("Paste", config.shortcuts_label_for("paste"), Action::Paste),
+            Self::menu_item("Find", config.shortcuts_label_for("find"), Action::Find),
+            Self::menu_item("Replace", config.shortcuts_label_for("replace"), Action::Replace),
+        ];
+        self.view_items = vec![(
+            format!(
+                " {} Highlight Keywords",
+                if config.highlight_keywords() { "[x]" } else { "[ ]" }
+            ),
+            Action::ToggleKeywordHighlight,
+        )];
+        self.info_items = vec![
+            Self::menu_item("FAQ", String::new(), Action::FAQ),
+        ];
         self.frame = frame_id;
     }
     fn interact(&mut self, file_logger: &mut FileLogger, input: &mut Input, pop_pup: &mut PopUpPanelFrame, text_buf: &mut TextBuf) -> Action {
@@ -73,11 +118,7 @@ impl LayoutPanel for MenuFrame {
             btn.calculate_control(file_logger, input);
 
             if (btn.clicked()) {
-                pop_pup.show(vec![
-                    (" New File.. ".to_string(), Action::NewFile),
-                    (" Open File..".to_string(), Action::OpenFile),
-                    (" Save File..".to_string(), Action::SaveFile),
-                ], file_logger, input)
+                pop_pup.show(self.file_items.clone(), file_logger, input)
             }
         }
 
@@ -85,24 +126,21 @@ impl LayoutPanel for MenuFrame {
         if let Some(btn) = &mut self.edit_button {
             btn.calculate_control(file_logger, input);
             if (btn.clicked()) {
-                pop_pup.show(vec![
-                    (" Undo ".to_string(), Action::Undo),
-                    (" Redo".to_string(), Action::Redo),
-                    (" Cut".to_string(), Action::Cut),
-                    (" Copy".to_string(), Action::Copy),
-                    (" Paste".to_string(), Action::Paste),
-                    (" Find".to_string(), Action::Find),
-                    (" Replace".to_string(), Action::Replace),
-                ], file_logger, input)
+                pop_pup.show(self.edit_items.clone(), file_logger, input)
+            }
+        }
+
+        if let Some(btn) = &mut self.view_button {
+            btn.calculate_control(file_logger, input);
+            if btn.clicked() {
+                pop_pup.show(self.view_items.clone(), file_logger, input)
             }
         }
         
         if let Some(btn) = &mut self.info_button {
             btn.calculate_control(file_logger, input);
             if (btn.clicked()) {
-                pop_pup.show(vec![
-                    (" FAQ ".to_string(), Action::FAQ),
-                ], file_logger, input)
+                pop_pup.show(self.info_items.clone(), file_logger, input)
             }
         }
 
@@ -114,6 +152,7 @@ impl LayoutPanel for MenuFrame {
 
         open_frame.add_control(Box::new(self.file_button.take().unwrap()));
         open_frame.add_control(Box::new(self.edit_button.take().unwrap()));
+        open_frame.add_control(Box::new(self.view_button.take().unwrap()));
         open_frame.add_control(Box::new(self.info_button.take().unwrap()));
 
 

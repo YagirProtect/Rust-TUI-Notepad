@@ -32,11 +32,96 @@ pub struct TextBuf{
     redo_stack: Vec<EditCommand>,
     scroll_x: usize,
     scroll_y: usize,
+    search_matches: Vec<Selection>,
+    current_search_match: Option<usize>,
+    edit_version: u64,
+    viewport_width: u16,
+    viewport_height: u16,
 }
 
 const TAB_WIDTH: usize = 4;
 
 impl TextBuf {
+    fn link_prefix_len(chars: &[char], start: usize) -> Option<usize> {
+        const HTTP: &[char] = &['h', 't', 't', 'p', ':', '/', '/'];
+        const HTTPS: &[char] = &['h', 't', 't', 'p', 's', ':', '/', '/'];
+        const WWW: &[char] = &['w', 'w', 'w', '.'];
+
+        if Self::starts_with_chars(chars, start, HTTPS) {
+            Some(HTTPS.len())
+        } else if Self::starts_with_chars(chars, start, HTTP) {
+            Some(HTTP.len())
+        } else if Self::starts_with_chars(chars, start, WWW) {
+            Some(WWW.len())
+        } else {
+            None
+        }
+    }
+
+    fn normalize_link(chars: &[char], start: usize, end: usize) -> Option<(usize, usize, String)> {
+        if start >= end {
+            return None;
+        }
+
+        let mut end = end;
+        while end > start && Self::is_trailing_link_punctuation(chars[end - 1]) {
+            end -= 1;
+        }
+
+        if end <= start {
+            return None;
+        }
+
+        let raw: String = chars[start..end].iter().collect();
+        let url = if raw.starts_with("www.") {
+            format!("https://{}", raw)
+        } else {
+            raw
+        };
+
+        Some((start, end, url))
+    }
+
+    fn link_in_token(chars: &[char], token_start: usize, token_end: usize) -> Option<(usize, usize, String)> {
+        let mut index = token_start;
+        while index < token_end {
+            let Some(_prefix_len) = Self::link_prefix_len(chars, index) else {
+                index += 1;
+                continue;
+            };
+
+            if !Self::can_start_link(chars, index) {
+                index += 1;
+                continue;
+            }
+
+            return Self::normalize_link(chars, index, token_end);
+        }
+
+        None
+    }
+
+    fn starts_with_chars(chars: &[char], start: usize, needle: &[char]) -> bool {
+        start + needle.len() <= chars.len() && chars[start..start + needle.len()] == needle[..]
+    }
+
+    fn is_link_break(ch: char) -> bool {
+        ch.is_whitespace() || matches!(ch, '<' | '>' | '"' | '\'' | '`')
+    }
+
+    fn is_trailing_link_punctuation(ch: char) -> bool {
+        matches!(ch, '.' | ',' | ';' | ':' | '!' | '?' | ')' | ']' | '}')
+    }
+
+    fn can_start_link(chars: &[char], start: usize) -> bool {
+        if start == 0 {
+            return true;
+        }
+
+        Self::is_link_break(chars[start - 1])
+            || matches!(chars[start - 1], '(' | '[' | '{')
+    }
+
     pub fn ensure_cursor_visible(&mut self, view_width: u16, view_height: u16) {
         let view_width = view_width as usize;
         let view_height = view_height as usize;
@@ -62,6 +147,74 @@ impl TextBuf {
         (self.scroll_x, self.scroll_y)
     }
 
+    pub fn scroll_vertical(&mut self, delta: i32) {
+        let max_scroll = self.lines.len().saturating_sub(self.viewport_height as usize);
+        if delta < 0 {
+            self.scroll_y = self.scroll_y.saturating_sub((-delta) as usize);
+        } else if delta > 0 {
+            self.scroll_y = (self.scroll_y + delta as usize).min(max_scroll);
+        }
+    }
+
+    pub fn scroll_horizontal(&mut self, delta: i32) {
+        let start = self.scroll_y.min(self.lines.len());
+        let end = (start + self.viewport_height as usize).min(self.lines.len());
+        let max_line_len = self.lines[start..end]
+            .iter()
+            .map(|line| line.len())
+            .max()
+            .unwrap_or(0);
+        let max_scroll = max_line_len.saturating_sub(self.viewport_width as usize);
+        if delta < 0 {
+            self.scroll_x = self.scroll_x.saturating_sub((-delta) as usize);
+        } else if delta > 0 {
+            self.scroll_x = (self.scroll_x + delta as usize).min(max_scroll);
+        }
+    }
+
+    pub fn scroll_with_cursor(&mut self, dx: i32, dy: i32) {
+        if dy != 0 {
+            self.scroll_vertical(dy);
+
+            if dy < 0 {
+                self.line_index = self.line_index.saturating_sub((-dy) as usize);
+            } else {
+                self.line_index = (self.line_index + dy as usize).min(self.lines.len().saturating_sub(1));
+            }
+        }
+
+        if dx != 0 {
+            self.scroll_horizontal(dx);
+
+            if dx < 0 {
+                self.current_index = self.current_index.saturating_sub((-dx) as usize);
+            } else {
+                self.current_index = self.current_index.saturating_add(dx as usize);
+            }
+        }
+
+        self.ensure_invariants();
+    }
+
+    pub fn version(&self) -> u64 {
+        self.edit_version
+    }
+
+    pub fn set_viewport_size(&mut self, width: u16, height: u16) {
+        self.viewport_width = width;
+        self.viewport_height = height;
+    }
+
+    pub fn ensure_cursor_visible_in_viewport(&mut self) {
+        self.ensure_cursor_visible(self.viewport_width, self.viewport_height);
+    }
+
+    pub fn set_cursor(&mut self, cursor: CursorPos) {
+        self.current_index = cursor.0;
+        self.line_index = cursor.1;
+        self.ensure_invariants();
+    }
+
     fn cursor(&self) -> CursorPos {
         (self.current_index, self.line_index)
     }
@@ -72,6 +225,44 @@ impl TextBuf {
 
     fn normalize_newlines(text: &str) -> String {
         text.replace("\r\n", "\n")
+    }
+
+    pub fn text(&self) -> String {
+        let mut text = String::new();
+
+        for (line_index, line) in self.lines.iter().enumerate() {
+            text.extend(line.iter().copied());
+            if line_index + 1 < self.lines.len() {
+                text.push('\n');
+            }
+        }
+
+        text
+    }
+
+    pub fn load_text(&mut self, text: &str) {
+        let normalized = Self::normalize_newlines(text);
+        let mut lines: Vec<Vec<char>> = normalized
+            .split('\n')
+            .map(|line| line.chars().collect())
+            .collect();
+
+        if lines.is_empty() {
+            lines.push(Vec::new());
+        }
+
+        self.lines = lines;
+        self.current_index = 0;
+        self.line_index = 0;
+        self.selection_start = (0, 0);
+        self.selection_end = (0, 0);
+        self.undo_stack.clear();
+        self.redo_stack.clear();
+        self.scroll_x = 0;
+        self.scroll_y = 0;
+        self.clear_search_matches();
+        self.edit_version = self.edit_version.saturating_add(1);
+        self.ensure_invariants();
     }
 
     fn position_after_text(start: CursorPos, text: &str) -> CursorPos {
@@ -182,6 +373,7 @@ impl TextBuf {
         self.current_index = end.0;
         self.line_index = end.1;
         self.clear_selection();
+        self.edit_version = self.edit_version.saturating_add(1);
         self.ensure_invariants();
         end
     }
@@ -191,6 +383,7 @@ impl TextBuf {
         self.current_index = start.0;
         self.line_index = start.1;
         self.clear_selection();
+        self.edit_version = self.edit_version.saturating_add(1);
         self.ensure_invariants();
         deleted
     }
@@ -332,6 +525,10 @@ impl TextBuf {
             return false;
         };
 
+        Self::range_contains((start, end), x, line)
+    }
+
+    fn range_contains((start, end): Selection, x: usize, line: usize) -> bool {
         if line < start.1 || line > end.1 {
             return false;
         }
@@ -351,7 +548,142 @@ impl TextBuf {
         true
     }
 
-    fn selected_text(&self) -> Option<String> {
+    pub fn set_search_matches(&mut self, matches: Vec<Selection>, current_match: Option<usize>) {
+        self.search_matches = matches;
+        self.current_search_match = current_match.filter(|&index| index < self.search_matches.len());
+    }
+
+    pub fn clear_search_matches(&mut self) {
+        self.search_matches.clear();
+        self.current_search_match = None;
+    }
+
+    pub fn search_match_count(&self) -> usize {
+        self.search_matches.len()
+    }
+
+    pub fn current_search_match_number(&self) -> Option<usize> {
+        self.current_search_match.map(|index| index + 1)
+    }
+
+    pub fn current_search_match_index(&self) -> Option<usize> {
+        self.current_search_match
+    }
+
+    pub fn current_search_match_range(&self) -> Option<Selection> {
+        self.current_search_match
+            .and_then(|index| self.search_matches.get(index).copied())
+    }
+
+    pub fn set_current_search_match(&mut self, index: Option<usize>) {
+        self.current_search_match = index.filter(|&value| value < self.search_matches.len());
+    }
+
+    pub fn search_highlight_at(&self, x: usize, line: usize) -> Option<bool> {
+        for (index, range) in self.search_matches.iter().copied().enumerate() {
+            if Self::range_contains(range, x, line) {
+                return Some(self.current_search_match == Some(index));
+            }
+        }
+
+        None
+    }
+
+    pub fn search_matches(&self) -> &[Selection] {
+        &self.search_matches
+    }
+
+    pub fn links_in_line(&self, line_index: usize) -> Vec<(usize, usize, String)> {
+        let Some(line) = self.lines.get(line_index) else {
+            return Vec::new();
+        };
+
+        let mut links = Vec::new();
+        let mut index = 0;
+
+        while index < line.len() {
+            while index < line.len() && Self::is_link_break(line[index]) {
+                index += 1;
+            }
+
+            if index >= line.len() {
+                break;
+            }
+
+            let token_start = index;
+            while index < line.len() && !Self::is_link_break(line[index]) {
+                index += 1;
+            }
+            let token_end = index;
+
+            if let Some(link) = Self::link_in_token(line, token_start, token_end) {
+                links.push(link);
+            }
+        }
+
+        links
+    }
+
+    pub fn link_at(&self, x: usize, line_index: usize) -> Option<(usize, usize, String)> {
+        let line = self.lines.get(line_index)?;
+        if x >= line.len() {
+            return None;
+        }
+
+        let mut token_start = x;
+        while token_start > 0 && !Self::is_link_break(line[token_start - 1]) {
+            token_start -= 1;
+        }
+
+        let mut token_end = x;
+        while token_end < line.len() && !Self::is_link_break(line[token_end]) {
+            token_end += 1;
+        }
+
+        let link = Self::link_in_token(line, token_start, token_end)?;
+        (x >= link.0 && x < link.1).then_some(link)
+    }
+
+    pub fn find_all(&self, query: &str) -> Vec<Selection> {
+        let query = Self::normalize_newlines(query);
+        if query.is_empty() {
+            return Vec::new();
+        }
+
+        let needle: Vec<char> = query.chars().collect();
+        let needle_len = needle.len();
+        let mut haystack = Vec::new();
+        let mut positions = Vec::new();
+
+        for (line_index, line) in self.lines.iter().enumerate() {
+            for (x, ch) in line.iter().copied().enumerate() {
+                haystack.push(ch);
+                positions.push((x, line_index));
+            }
+
+            if line_index + 1 < self.lines.len() {
+                haystack.push('\n');
+                positions.push((line.len(), line_index));
+            }
+        }
+
+        if needle_len == 0 || needle_len > haystack.len() {
+            return Vec::new();
+        }
+
+        let mut matches = Vec::new();
+        for start_index in 0..=haystack.len() - needle_len {
+            if haystack[start_index..start_index + needle_len] == needle[..] {
+                let start = positions[start_index];
+                let end = Self::position_after_text(start, &query);
+                matches.push((start, end));
+            }
+        }
+
+        matches
+    }
+
+    pub fn selected_text(&self) -> Option<String> {
         let Some((start, end)) = self.selection_range() else {
             return None;
         };
@@ -385,6 +717,43 @@ impl TextBuf {
         let deleted = self.apply_delete(start, end);
         self.record_delete(start, deleted, before_cursor, before_selection);
         true
+    }
+
+    pub fn replace_range(&mut self, start: CursorPos, end: CursorPos, replacement: &str) -> bool {
+        let replacement = Self::normalize_newlines(replacement);
+        let before_cursor = self.cursor();
+        let before_selection = self.selection();
+
+        let deleted = self.apply_delete(start, end);
+        self.record_delete(start, deleted, before_cursor, before_selection);
+
+        if !replacement.is_empty() {
+            self.apply_insert(start, &replacement);
+            self.record_insert(start, replacement, before_cursor, before_selection);
+        }
+
+        true
+    }
+
+    pub fn replace_current_search_match(&mut self, replacement: &str) -> bool {
+        let Some((start, end)) = self.current_search_match_range() else {
+            return false;
+        };
+
+        self.replace_range(start, end, replacement)
+    }
+
+    pub fn replace_all_matches(&mut self, query: &str, replacement: &str) -> usize {
+        let matches = self.find_all(query);
+        if matches.is_empty() {
+            return 0;
+        }
+
+        for (start, end) in matches.iter().rev().copied() {
+            self.replace_range(start, end, replacement);
+        }
+
+        matches.len()
     }
 
     pub fn copy_selection(&self) -> bool {
@@ -468,6 +837,39 @@ impl TextBuf {
 }
 
 impl TextBuf {
+    pub fn move_to_line_start(&mut self) {
+        self.current_index = 0;
+    }
+
+    pub fn move_to_line_end(&mut self) {
+        self.current_index = self.lines[self.line_index].len();
+    }
+
+    pub fn change_cursor_page(&mut self, dir: i32, page_lines: usize) {
+        if page_lines == 0 || self.lines.is_empty() {
+            return;
+        }
+
+        let delta = page_lines as i32;
+        let mut line = self.line_index as i32;
+        if dir < 0 {
+            line -= delta;
+        } else if dir > 0 {
+            line += delta;
+        }
+
+        if line < 0 {
+            line = 0;
+        } else if line >= self.lines.len() as i32 {
+            line = self.lines.len() as i32 - 1;
+        }
+
+        self.line_index = line as usize;
+        if self.current_index > self.lines[self.line_index].len() {
+            self.current_index = self.lines[self.line_index].len();
+        }
+    }
+
     pub fn change_cursor_horizontal(&mut self, dir: i32) {
         if (dir < 0){
             if (self.current_index > 0){
@@ -672,6 +1074,11 @@ impl Default for TextBuf {
             redo_stack: Vec::new(),
             scroll_x: 0,
             scroll_y: 0,
+            search_matches: Vec::new(),
+            current_search_match: None,
+            edit_version: 0,
+            viewport_width: 0,
+            viewport_height: 0,
         }
     }
 }
