@@ -67,8 +67,7 @@ impl AppActions {
                 }
             }
             Action::RemoveRecentPath(path) => {
-                app.config
-                    .remove_last_file(path.to_string_lossy().as_ref(), &mut app.logger);
+                Self::remove_recent_path(app, path);
             }
             Action::SaveFile => {
                 Self::save_current_document(app);
@@ -263,6 +262,41 @@ impl AppActions {
     fn close_search_if_needed(app: &mut App) {
         if app.search_panel.active {
             app.search_panel.close(&mut app.input, &mut app.text_buffer);
+        }
+    }
+
+    fn remove_recent_path(app: &mut App, path: PathBuf) {
+        let path_str = path.to_string_lossy().to_string();
+        let recent_before = app.config.get_last_files().clone();
+        let removed_index = recent_before
+            .iter()
+            .position(|value| value == &path_str);
+        let is_current = path == app.current_file_path;
+
+        if is_current && !AppDialogs::confirm_document_switch(app) {
+            return;
+        }
+
+        app.config.remove_last_file(&path_str, &mut app.logger);
+
+        if !is_current {
+            return;
+        }
+
+        let fallback_path = removed_index.and_then(|index| {
+            if index + 1 < recent_before.len() {
+                return Some(PathBuf::from(&recent_before[index + 1]));
+            }
+            if index > 0 {
+                return Some(PathBuf::from(&recent_before[index - 1]));
+            }
+            None
+        });
+
+        if let Some(next_path) = fallback_path {
+            Self::open_document(app, next_path);
+        } else {
+            Self::new_document(app);
         }
     }
 }

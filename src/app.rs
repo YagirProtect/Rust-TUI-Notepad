@@ -38,7 +38,7 @@ pub struct App{
 }
 
 impl App{
-    pub fn new() -> App{
+    pub fn new(start_path: Option<PathBuf>) -> App{
 
         let mut logger = FileLogger::new();
         let fs = FileSystem::new();
@@ -47,7 +47,7 @@ impl App{
         let screen_buf = ScreenBuf::new(x, y);
         let input = Input::new(ShortcutMap::from_bindings(config.hotkeys(), &mut logger));
         let current_file_path = FileSystem::next_new_document_path(None);
-        if config.get_last_files().is_empty() {
+        if config.get_last_files().is_empty() && start_path.is_none() {
             config.ensure_last_file(current_file_path.to_string_lossy().as_ref(), &mut logger);
         }
         logger.log("App created");
@@ -65,6 +65,9 @@ impl App{
             should_exit: false,
         };
         app.input.change_mode(EInputMode::TextEditor);
+        if let Some(path) = start_path {
+            AppActions::open_document(&mut app, path);
+        }
         app
     }
 

@@ -18,6 +18,7 @@ use crate::ui::c_rect::Rect;
 #[derive(Default)]
 pub struct FilesFrame {
     buttons: Vec<Button>,
+    close_buttons: Vec<Button>,
     recent_paths: Vec<PathBuf>,
     missing_paths: Vec<bool>,
     frame: u16,
@@ -41,10 +42,11 @@ impl LayoutPanel for FilesFrame {
         self.frame = open_frame.frame_id;
 
         self.buttons.clear();
+        self.close_buttons.clear();
         self.recent_paths.clear();
         self.missing_paths.clear();
 
-        let max_len: usize = 18;
+        let max_len: usize = 28;
         for recent_file in config.get_last_files() {
             let path = PathBuf::from(recent_file);
             let Some(file_name) = path.file_name().and_then(|value| value.to_str()) else {
@@ -63,7 +65,9 @@ impl LayoutPanel for FilesFrame {
                 "  "
             };
 
-            let label_len = max_len.saturating_sub(prefix.chars().count());
+            let label_len = max_len
+                .saturating_sub(prefix.chars().count())
+                .saturating_sub(2);
             let mut text = String::from(prefix);
             if file_name.chars().count() > label_len {
                 let trimmed: String = file_name.chars().take(label_len.saturating_sub(3)).collect();
@@ -74,6 +78,7 @@ impl LayoutPanel for FilesFrame {
                 let padding = label_len.saturating_sub(file_name.chars().count());
                 text.push_str(&" ".repeat(padding));
             }
+            text.push_str("  ");
 
             let mut button = Button::new(&text);
             if is_missing {
@@ -82,7 +87,20 @@ impl LayoutPanel for FilesFrame {
                 button.set_persistent_color(Some(Color::Green));
             }
             button.create_control(open_frame);
+
+            let row_rect = *button.get_rect();
+            let close_rect = Rect::new(
+                row_rect.x + row_rect.w.saturating_sub(1),
+                row_rect.y,
+                1,
+                1,
+            );
+            let mut close_button = Button::new("x");
+            close_button.set_persistent_color(Some(Color::Gray));
+            close_button.save_rect(close_rect);
+
             self.buttons.push(button);
+            self.close_buttons.push(close_button);
             self.recent_paths.push(path);
             self.missing_paths.push(is_missing);
         }
@@ -98,6 +116,15 @@ impl LayoutPanel for FilesFrame {
         _text_buf: &mut TextBuf,
     ) -> Action {
         for (index, button) in self.buttons.iter_mut().enumerate() {
+            if let Some(close_button) = self.close_buttons.get_mut(index) {
+                close_button.calculate_control(file_logger, input);
+                if close_button.clicked() {
+                    if let Some(path) = self.recent_paths.get(index) {
+                        return Action::RemoveRecentPath(path.clone());
+                    }
+                }
+            }
+
             button.calculate_control(file_logger, input);
             if button.clicked() {
                 if let Some(path) = self.recent_paths.get(index) {
@@ -115,6 +142,9 @@ impl LayoutPanel for FilesFrame {
     fn draw(&mut self, layout: &mut Layout, screen: &mut ScreenBuf, _text_buf: &mut TextBuf) {
         let frame = layout.get_frame(self.frame).unwrap();
         for button in self.buttons.drain(..) {
+            frame.add_control(Box::new(button));
+        }
+        for button in self.close_buttons.drain(..) {
             frame.add_control(Box::new(button));
         }
         frame.draw(&Rect::default(), screen);

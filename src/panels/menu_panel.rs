@@ -107,7 +107,7 @@ impl LayoutPanel for MenuFrame {
             Action::ToggleKeywordHighlight,
         )];
         self.info_items = vec![
-            Self::menu_item("FAQ", String::new(), Action::FAQ),
+            Self::menu_item("FAQ ", String::new(), Action::FAQ),
         ];
         self.frame = frame_id;
     }

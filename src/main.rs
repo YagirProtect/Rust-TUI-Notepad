@@ -1,4 +1,5 @@
 use crate::app::App;
+use std::path::PathBuf;
 
 mod fs;
 mod config;
@@ -19,6 +20,7 @@ mod syntax_highlight;
 mod text_buffer;
 
 fn main(){
-    let mut app = App::new();
-    app.run();
+    let start_path = std::env::args_os().nth(1).map(PathBuf::from);
+    let mut app = App::new(start_path);
+    let _ = app.run();
 }
