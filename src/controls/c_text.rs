@@ -8,12 +8,17 @@ use crate::ui::c_rect::Rect;
 pub struct TextBox{
     text: Vec<char>,
     color: Color,
+    background: Color,
     rect: Rect,
 }
 
 impl TextBox {
     pub fn set_color(&mut self, p0: Color) {
         self.color = p0;
+    }
+
+    pub fn set_background(&mut self, p0: Color) {
+        self.background = p0;
     }
 }
 
@@ -37,7 +42,7 @@ impl Render for TextBox {
         let bounds = self.get_bounds();
 
         for i in 0..bounds.w {
-            screen.set(rect.x + i, rect.y,  self.text[i as usize], self.color);
+            screen.set_with_bg(rect.x + i, rect.y,  self.text[i as usize], self.color, self.background);
         }
     }
 }
@@ -47,6 +52,7 @@ impl TextBox{
         TextBox{
             text: String::from(text).chars().collect(),
             color: Color::White,
+            background: Color::Black,
             rect: Rect::default()
         }
     }

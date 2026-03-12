@@ -1,14 +1,24 @@
-# Rust-TUI-Notepad
+<h1>
+  <img src="assets/text_document_icon.png" alt="Rust-TUI-Notepad icon" width="42" />
+  Rust-TUI-Notepad
+</h1>
 
 A terminal text editor written in Rust on top of `crossterm`.
 
 This project is primarily a practical playground to learn:
 - building a custom TUI layout and render pipeline
 - editing text with selections, history, and search
-- working with system clipboard, file dialogs, and recent files
+- working with system clipboard, file dialogs, tabs, and recent files
 - keeping a terminal app usable across different terminal hosts
+- handling crash recovery in a terminal editor
 
 Some features helped by OpenAI Codex.
+
+## Preview
+
+| Editor view | Documents/tabs view |
+| --- | --- |
+| ![Editor screenshot](screens/Screenshot_1.png) | ![Tabs screenshot](screens/Screenshot_2.png) |
 
 ---
 
@@ -26,17 +36,38 @@ Some features helped by OpenAI Codex.
 - Real system clipboard support
 - Clickable links inside the document
 
-### File management
+### Documents and tabs
 
 - Open file through native file dialog
 - Save / Save As
 - New virtual document with reserved path in app data
-- Recent files panel on the left
-- Current file highlight in recent files
-- Dirty state marker (`*`) for unsaved changes
-- Broken recent-file entries are marked with `x` and removed on click
+- Multi-document tab strip based on recent files
+- Click tab to switch active document without forcing save
+- Close document tab by clicking `x`
+- Horizontal tab scrolling with mouse wheel on the tab strip
+- Dirty state marker (`*`) per document tab
+- Broken file entries are marked with `x` and can be removed on click
 - "Open in Explorer" for the current file
-- Unsaved-changes confirmation before switching files or exiting
+- Unsaved-changes confirmation on close/exit across all dirty documents
+
+### Session safety
+
+- Automatic crash/session recovery snapshots
+- Recovery restores:
+  - text
+  - cursor and selection
+  - scroll position
+  - undo / redo history
+- Recovery snapshot is cleaned on normal exit
+
+### Windows integration (`notepad_open_with`)
+
+- Separate launcher binary: `notepad_open_with.exe`
+- Accepts file path arguments and forwards them to `NOTEPAD.exe`
+- Auto-registers itself in `HKCU\\Software\\Classes` for "Open with" and `.txt` ProgID entries
+- Registers icon for associated `.txt` documents using the launcher's own executable icon
+- Temporarily adjusts Windows Terminal settings (`Ctrl+V`, color scheme) and restores original settings after exit
+- Launcher icon and app manifest are embedded into the `.exe` at build time from `assets/`
 
 ### Search and replace
 
@@ -80,57 +111,40 @@ Some features helped by OpenAI Codex.
 ### Run from source
 
 ```bash
-cargo run
+cargo run --bin NOTEPAD
 ```
 
-### Windows Terminal helper
+Open a specific file directly:
 
-If you run inside Windows Terminal and want a cleaner `Ctrl+V` experience:
-
-```bat
-run_notepad_wt.cmd
+```bash
+cargo run --bin NOTEPAD -- "C:\\path\\to\\file.txt"
 ```
 
-What it does:
-- temporarily unbinds `Ctrl+V` in Windows Terminal
-- temporarily applies the project color scheme
-- restores the original `settings.json` after exit
+Run the Windows launcher from source:
 
-If Windows Terminal is not installed, the launcher now falls back to a normal run without touching terminal settings.
+```bash
+cargo run --bin notepad_open_with -- "C:\\path\\to\\file.txt"
+```
 
-### Launcher files
+### Build release binaries
 
-The repository also contains helper launcher scripts:
+```bash
+cargo build --release --bins
+```
 
-- `run_notepad_wt.cmd`
-- `run_notepad_wt.bat`
-- `run_notepad_wt.ps1`
+Artifacts:
 
-What they are for:
+- `target\\release\\NOTEPAD.exe` - main editor
+- `target\\release\\notepad_open_with.exe` - Open With launcher with embedded icon/manifest
 
-- `run_notepad_wt.cmd` - main Windows entry point
-- `run_notepad_wt.bat` - same wrapper as `.cmd`, kept for convenience
-- `run_notepad_wt.ps1` - actual launcher logic used by both wrappers
+On Windows, icon embedding for `notepad_open_with.exe` requires `rc.exe` (Windows SDK) and `cvtres.exe` (Visual Studio Build Tools / MSVC tools).
 
-What the PowerShell launcher does:
+### Using Open With on Windows
 
-- tries to find Windows Terminal settings
-- temporarily unbinds `Ctrl+V` from the terminal host
-- temporarily injects the NOTEPAD color scheme into Windows Terminal
-- starts `NOTEPAD.exe` or falls back to `cargo run`
-- restores original Windows Terminal settings after exit
-
-Why this exists:
-
-- many terminal hosts intercept `Ctrl+V` themselves
-- in Windows Terminal that can turn paste into streamed text instead of a clean app-level paste
-- the launcher gives the editor a better chance to receive `Ctrl+V` the way the app expects
-
-Important behavior:
-
-- if Windows Terminal is missing, the launcher does not fail anymore
-- in that case it simply runs the app without editing any terminal settings
-- if you do not need this behavior, you can ignore these files and just use `cargo run`
+- Build `notepad_open_with.exe`
+- In Explorer: right click a `.txt` file -> Open with -> Choose another app -> select `notepad_open_with.exe`
+- After first launch, the launcher writes user-level (`HKCU`) registry entries for easier reuse and icon binding
+- The launcher does not require administrator rights because it only writes to current-user registry hive
 
 ---
 
@@ -168,6 +182,7 @@ Files used by the app:
 
 - `.config` - editor config, recent files, hotkeys, highlight toggle
 - `documents/` - generated paths for new unsaved documents
+- `recovery/session.json` - crash/session recovery snapshot
 - `log.txt` - local log file
 
 Example hotkey section:
@@ -188,7 +203,7 @@ Example hotkey section:
 - Syntax highlighting is intentionally generic and rule-based.
 - `Ctrl+V` behavior depends on terminal host; `Alt+V` and `Shift+Insert` are safer fallbacks.
 - Control characters are sanitized on render to avoid breaking the terminal output.
-- The project currently has no tabs, splits, or plugin system.
+- The project currently has no splits or plugin system.
 
 ---
 
@@ -197,14 +212,30 @@ Example hotkey section:
 - `src/app.rs` - event loop, layout orchestration, drawing
 - `src/app_actions.rs` - app-level actions
 - `src/app_dialogs.rs` - native dialogs
+- `src/recovery_store.rs` - crash/session recovery persistence
 - `src/text_buffer.rs` - editor buffer, search, history, selection, links
 - `src/input.rs` - input state and command routing
 - `src/shortcuts.rs` - configurable hotkey parser
 - `src/syntax_highlight.rs` - generic syntax highlighting
 - `src/panels/text_editor_panel.rs` - main editor panel
 - `src/panels/search_panel.rs` - find / replace popup
-- `src/panels/files_panel.rs` - recent files panel
+- `src/panels/files_panel.rs` - tabs/recent files panel
 - `src/panels/menu_panel.rs` - top menu
+- `src/bin/notepad_open_with.rs` - Windows Open With launcher
+- `build.rs` - Windows icon/manifest resource embedding for launcher
+- `assets/text_document_icon.ico` - multi-size icon for launcher/doc association
+- `assets/notepad_open_with.manifest` - Windows manifest embedded into launcher
+
+---
+
+## License
+
+This project is dual-licensed under either of:
+
+- Apache License 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
 
 ---
 

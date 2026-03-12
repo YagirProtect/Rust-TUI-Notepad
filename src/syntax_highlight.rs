@@ -47,6 +47,8 @@ const BLUE_KEYWORDS: &[&str] = &[
     "enum",
     "bool",
     "long",
+    "override",
+    "virtual"
 ];
 
 const GREEN_KEYWORDS: &[&str] = &[

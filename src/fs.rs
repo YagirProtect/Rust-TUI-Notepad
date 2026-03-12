@@ -10,6 +10,7 @@ impl FileSystem {
     pub fn new() -> Self {
         let _ = std::fs::create_dir(Self::get_notepad_dir());
         let _ = std::fs::create_dir_all(Self::get_documents_dir());
+        let _ = std::fs::create_dir_all(Self::get_recovery_dir());
         Self::default()
     }
 
@@ -57,6 +58,14 @@ impl FileSystem {
 
     pub fn get_documents_dir() -> PathBuf {
         Self::get_notepad_dir().join("documents")
+    }
+
+    pub fn get_recovery_dir() -> PathBuf {
+        Self::get_notepad_dir().join("recovery")
+    }
+
+    pub fn get_recovery_file_path() -> PathBuf {
+        Self::get_recovery_dir().join("session.json")
     }
 
     pub fn ensure_documents_dir() -> PathBuf {

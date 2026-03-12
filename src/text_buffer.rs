@@ -1,15 +1,16 @@
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
+use serde::{Deserialize, Serialize};
 
 type CursorPos = (usize, usize);
 type Selection = (CursorPos, CursorPos);
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Hash)]
 enum EditKind {
     Insert,
     Delete,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize, Hash)]
 struct EditCommand {
     kind: EditKind,
     start: CursorPos,
@@ -18,6 +19,19 @@ struct EditCommand {
     before_selection: Selection,
     after_cursor: CursorPos,
     after_selection: Selection,
+}
+
+#[derive(Clone, Serialize, Deserialize, Default, Hash)]
+#[serde(default)]
+pub struct TextBufRecoveryState {
+    cursor: CursorPos,
+    selection_start: CursorPos,
+    selection_end: CursorPos,
+    undo_stack: Vec<EditCommand>,
+    redo_stack: Vec<EditCommand>,
+    scroll_x: usize,
+    scroll_y: usize,
+    edit_version: u64,
 }
 
 pub struct TextBuf{
@@ -294,6 +308,12 @@ impl TextBuf {
         if self.current_index > len {
             self.current_index = len;
         }
+    }
+
+    fn clamp_pos(&self, pos: CursorPos) -> CursorPos {
+        let line = pos.1.min(self.lines.len().saturating_sub(1));
+        let index = pos.0.min(self.lines[line].len());
+        (index, line)
     }
 
     fn insert_text_raw(&mut self, start: CursorPos, text: &str) -> CursorPos {
@@ -813,6 +833,34 @@ impl TextBuf {
 
     pub fn paste_from_clipboard(&mut self) -> bool {
         self.paste_from_clipboard_text().is_some()
+    }
+
+    pub fn recovery_state(&self) -> TextBufRecoveryState {
+        TextBufRecoveryState {
+            cursor: self.cursor(),
+            selection_start: self.selection_start,
+            selection_end: self.selection_end,
+            undo_stack: self.undo_stack.clone(),
+            redo_stack: self.redo_stack.clone(),
+            scroll_x: self.scroll_x,
+            scroll_y: self.scroll_y,
+            edit_version: self.edit_version,
+        }
+    }
+
+    pub fn apply_recovery_state(&mut self, state: TextBufRecoveryState) {
+        self.undo_stack = state.undo_stack;
+        self.redo_stack = state.redo_stack;
+        self.scroll_x = state.scroll_x;
+        self.scroll_y = state.scroll_y;
+        self.edit_version = state.edit_version;
+
+        let cursor = self.clamp_pos(state.cursor);
+        self.current_index = cursor.0;
+        self.line_index = cursor.1;
+        self.selection_start = self.clamp_pos(state.selection_start);
+        self.selection_end = self.clamp_pos(state.selection_end);
+        self.ensure_invariants();
     }
 }
 

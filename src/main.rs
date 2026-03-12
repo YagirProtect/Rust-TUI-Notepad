@@ -18,6 +18,7 @@ mod panels;
 mod shortcuts;
 mod syntax_highlight;
 mod text_buffer;
+mod recovery_store;
 
 fn main(){
     let start_path = std::env::args_os().nth(1).map(PathBuf::from);

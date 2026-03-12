@@ -12,6 +12,7 @@ pub enum Action {
     OpenInExplorer,
     OpenPath(PathBuf),
     RemoveRecentPath(PathBuf),
+    SetFilesTabsScroll(u16),
 
     Copy,
     Paste,
