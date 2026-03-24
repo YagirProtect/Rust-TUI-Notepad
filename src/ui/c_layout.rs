@@ -62,14 +62,11 @@ impl Layout {
         Action::None
     }
 
-    pub fn draw(&mut self, screen: &mut ScreenBuf, pop_pup: &mut PopUpPanelFrame, file_logger: &mut FileLogger, text_buf: &mut TextBuf) {
+    pub fn draw(&mut self, screen: &mut ScreenBuf, pop_pup: &mut PopUpPanelFrame, _file_logger: &mut FileLogger, text_buf: &mut TextBuf) {
         let mut panels = std::mem::take(&mut self.layout_panels);
-
-        file_logger.log("=======");
 
         for item in panels.iter_mut() {
             item.draw(self, screen, text_buf);
-            file_logger.log("draw panel");
         }
 
         if (pop_pup.active) {

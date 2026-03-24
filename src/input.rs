@@ -37,6 +37,8 @@ pub struct Input{
     pub cursor_y: u16,
 
     pub clicked:Option<(u16, u16)>,
+    pub middle_clicked: Option<(u16, u16)>,
+    pub double_clicked: Option<(u16, u16)>,
     pub mouse_down: Option<(u16, u16)>,
     pub mouse_released: Option<(u16, u16)>,
     pub mouse_scroll: Option<(i32, i32)>,
@@ -52,6 +54,8 @@ pub struct Input{
     pub text_mouse_anchor: Option<(usize, usize)>,
     paste_suppression_remaining: usize,
     paste_suppression_started: Option<Instant>,
+    last_left_click_at: Option<Instant>,
+    last_left_click_pos: Option<(u16, u16)>,
     shortcut_map: ShortcutMap,
 }
 
@@ -61,6 +65,8 @@ impl Default for Input {
             cursor_x: 0,
             cursor_y: 0,
             clicked: None,
+            middle_clicked: None,
+            double_clicked: None,
             mouse_down: None,
             mouse_released: None,
             mouse_scroll: None,
@@ -74,6 +80,8 @@ impl Default for Input {
             text_mouse_anchor: None,
             paste_suppression_remaining: 0,
             paste_suppression_started: None,
+            last_left_click_at: None,
+            last_left_click_pos: None,
             shortcut_map: ShortcutMap::default(),
         }
     }
@@ -117,6 +125,25 @@ impl Input {
 impl Input {
     pub fn change_mode(&mut self, mode: EInputMode) {
         self.mode = mode;
+    }
+
+    pub fn register_left_click(&mut self, x: u16, y: u16) -> bool {
+        const DOUBLE_CLICK_WINDOW: Duration = Duration::from_millis(350);
+        const DOUBLE_CLICK_MAX_DELTA: u16 = 1;
+
+        let now = Instant::now();
+        let is_double = self
+            .last_left_click_at
+            .zip(self.last_left_click_pos)
+            .is_some_and(|(last_at, (last_x, last_y))| {
+                now.duration_since(last_at) <= DOUBLE_CLICK_WINDOW
+                    && last_x.abs_diff(x) <= DOUBLE_CLICK_MAX_DELTA
+                    && last_y.abs_diff(y) <= DOUBLE_CLICK_MAX_DELTA
+            });
+
+        self.last_left_click_at = Some(now);
+        self.last_left_click_pos = Some((x, y));
+        is_double
     }
 }
 

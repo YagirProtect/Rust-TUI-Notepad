@@ -118,9 +118,36 @@ impl SearchPanelFrame {
         let rects = self.layout_rects(root);
         self.update_buttons(rects, input, logger);
 
-        if input.clicked.is_some() {
+        if input.mouse_down.is_none() && input.is_search_mode() {
+            self.active_buffer_mut(input.mode).clear_word_selection_anchor();
+        }
+
+        if let Some((double_x, double_y)) = input.double_clicked {
+            if rects.query_content.contains(double_x, double_y) {
+                input.change_mode(EInputMode::SearchQueryEditor);
+                let pos = Self::buffer_pos_at(&self.query_buffer, rects.query_content, double_x, double_y);
+                self.query_buffer.start_word_selection_at(pos);
+                self.query_buffer.ensure_cursor_visible(rects.query_content.w, rects.query_content.h);
+                input.text_mouse_anchor = None;
+                return true;
+            }
+
+            if self.mode == SearchPanelMode::Replace
+                && rects.replace_content.contains(double_x, double_y)
+            {
+                input.change_mode(EInputMode::SearchReplaceEditor);
+                let pos = Self::buffer_pos_at(&self.replace_buffer, rects.replace_content, double_x, double_y);
+                self.replace_buffer.start_word_selection_at(pos);
+                self.replace_buffer.ensure_cursor_visible(rects.replace_content.w, rects.replace_content.h);
+                input.text_mouse_anchor = None;
+                return true;
+            }
+        }
+
+        if input.clicked.is_some() && input.double_clicked.is_none() {
             if rects.query_content.contains(input.cursor_x, input.cursor_y) {
                 input.change_mode(EInputMode::SearchQueryEditor);
+                self.query_buffer.clear_word_selection_anchor();
                 Self::place_cursor(&mut self.query_buffer, rects.query_content, input.cursor_x, input.cursor_y);
                 return true;
             }
@@ -129,12 +156,67 @@ impl SearchPanelFrame {
                 && rects.replace_content.contains(input.cursor_x, input.cursor_y)
             {
                 input.change_mode(EInputMode::SearchReplaceEditor);
+                self.replace_buffer.clear_word_selection_anchor();
                 Self::place_cursor(&mut self.replace_buffer, rects.replace_content, input.cursor_x, input.cursor_y);
                 return true;
             }
 
             if input.is_search_mode() && !rects.panel.contains(input.cursor_x, input.cursor_y) {
                 input.change_mode(EInputMode::FreeMove);
+            }
+        }
+
+        if let Some((down_x, down_y)) = input.mouse_down {
+            let target_mode = if rects.query_content.contains(down_x, down_y) {
+                Some(EInputMode::SearchQueryEditor)
+            } else if self.mode == SearchPanelMode::Replace
+                && rects.replace_content.contains(down_x, down_y)
+            {
+                Some(EInputMode::SearchReplaceEditor)
+            } else {
+                None
+            };
+
+            if let Some(mode) = target_mode {
+                if input.mode != mode {
+                    input.change_mode(mode);
+                }
+
+                let input_rect = self.active_input_rect(rects, mode);
+                let active_buffer = self.active_buffer_mut(mode);
+                let current_pos =
+                    Self::drag_buffer_pos_at(active_buffer, input_rect, input.cursor_x, input.cursor_y);
+
+                if active_buffer.update_word_selection_to(current_pos) {
+                    active_buffer.ensure_cursor_visible(input_rect.w, input_rect.h);
+                } else {
+                    let anchor = *input.text_mouse_anchor.get_or_insert(current_pos);
+                    active_buffer.set_cursor(current_pos);
+                    active_buffer.ensure_cursor_visible(input_rect.w, input_rect.h);
+
+                    if current_pos != anchor {
+                        active_buffer.selection_start = anchor;
+                        active_buffer.selection_end = current_pos;
+                    } else if input.mouse_released.is_some() {
+                        active_buffer.clear_selection();
+                    }
+                }
+
+                return true;
+            }
+        }
+
+        if let Some((dx, dy)) = input.mouse_scroll {
+            if rects.query_content.contains(input.cursor_x, input.cursor_y) {
+                Self::scroll_buffer(&mut self.query_buffer, dx, dy);
+                return true;
+            }
+
+            if self.mode == SearchPanelMode::Replace
+                && rects.replace_content.contains(input.cursor_x, input.cursor_y)
+            {
+                Self::scroll_buffer(&mut self.replace_buffer, dx, dy);
+                return true;
             }
         }
 
@@ -421,13 +503,51 @@ impl SearchPanelFrame {
     }
 
     fn place_cursor(buffer: &mut TextBuf, input_rect: Rect, x: u16, y: u16) {
+        let (column, line) = Self::buffer_pos_at(buffer, input_rect, x, y);
+        buffer.set_cursor((column, line));
+        buffer.clear_selection();
+    }
+
+    fn drag_buffer_pos_at(buffer: &TextBuf, input_rect: Rect, x: u16, y: u16) -> (usize, usize) {
+        let (scroll_x, scroll_y) = buffer.scroll_offset();
+        let line_count = buffer.lines.len().max(1);
+
+        let line = if y <= input_rect.y {
+            scroll_y.saturating_sub(1)
+        } else if y >= input_rect.y + input_rect.h.saturating_sub(1) {
+            (scroll_y + input_rect.h as usize).min(line_count.saturating_sub(1))
+        } else {
+            scroll_y + y.saturating_sub(input_rect.y) as usize
+        }
+        .min(line_count.saturating_sub(1));
+
+        let column = if x <= input_rect.x {
+            scroll_x.saturating_sub(1)
+        } else if x >= input_rect.x + input_rect.w.saturating_sub(1) {
+            scroll_x + input_rect.w as usize
+        } else {
+            scroll_x + x.saturating_sub(input_rect.x) as usize
+        };
+        let column = column.min(buffer.lines[line].len());
+        (column, line)
+    }
+
+    fn buffer_pos_at(buffer: &TextBuf, input_rect: Rect, x: u16, y: u16) -> (usize, usize) {
         let (scroll_x, scroll_y) = buffer.scroll_offset();
         let line = scroll_y + y.saturating_sub(input_rect.y) as usize;
         let line = line.min(buffer.lines.len().saturating_sub(1));
         let column = scroll_x + x.saturating_sub(input_rect.x) as usize;
         let column = column.min(buffer.lines[line].len());
-        buffer.set_cursor((column, line));
-        buffer.clear_selection();
+        (column, line)
+    }
+
+    fn scroll_buffer(buffer: &mut TextBuf, dx: i32, dy: i32) {
+        if dy != 0 {
+            buffer.scroll_vertical(dy);
+        }
+        if dx != 0 {
+            buffer.scroll_horizontal(dx);
+        }
     }
 
     fn update_input_cursor(&mut self, input: &mut Input, input_rect: Rect) {

@@ -220,6 +220,16 @@ impl LayoutPanel for FilesFrame {
             }
         }
 
+        if let Some((mx, my)) = input.middle_clicked {
+            for tab in &self.visible_tabs {
+                if tab.tab_button.get_rect().contains(mx, my) {
+                    if let Some(path) = self.recent_paths.get(tab.index) {
+                        return Action::RemoveRecentPath(path.clone());
+                    }
+                }
+            }
+        }
+
         for tab in &mut self.visible_tabs {
             if let Some(close_button) = &mut tab.close_button {
                 close_button.calculate_control(file_logger, input);

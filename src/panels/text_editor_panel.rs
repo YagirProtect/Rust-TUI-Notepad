@@ -160,6 +160,12 @@ impl LayoutPanel for TextEditorFrame {
         let mut handled_mouse_scroll = false;
         text_buf.set_viewport_size(text_rect.w, text_rect.h);
         self.hovered_link = None;
+        if input.mouse_down.is_none() {
+            text_buf.clear_word_selection_anchor();
+        }
+        if input.clicked.is_some() && input.double_clicked.is_none() {
+            text_buf.clear_word_selection_anchor();
+        }
 
         if self.show_link_hints {
             self.hovered_link = self
@@ -183,6 +189,18 @@ impl LayoutPanel for TextEditorFrame {
             }
         }
 
+        if let Some((double_x, double_y)) = input.double_clicked {
+            if editor_rect.contains(double_x, double_y) {
+                if input.mode != EInputMode::TextEditor {
+                    input.change_mode(EInputMode::TextEditor);
+                }
+
+                let pos = self.screen_to_text_pos(text_rect, double_x, double_y, text_buf);
+                text_buf.start_word_selection_at(pos);
+                text_buf.ensure_cursor_visible(text_rect.w, text_rect.h);
+            }
+        }
+
         if let Some((down_x, down_y)) = input.mouse_down {
             if editor_rect.contains(down_x, down_y) {
                 if input.mode != EInputMode::TextEditor {
@@ -190,15 +208,19 @@ impl LayoutPanel for TextEditorFrame {
                 }
 
                 let current_pos = self.drag_screen_to_text_pos(text_rect, input.cursor_x, input.cursor_y, text_buf);
-                let anchor = *input.text_mouse_anchor.get_or_insert(current_pos);
-                text_buf.set_cursor(current_pos);
-                text_buf.ensure_cursor_visible(text_rect.w, text_rect.h);
+                if text_buf.update_word_selection_to(current_pos) {
+                    text_buf.ensure_cursor_visible(text_rect.w, text_rect.h);
+                } else {
+                    let anchor = *input.text_mouse_anchor.get_or_insert(current_pos);
+                    text_buf.set_cursor(current_pos);
+                    text_buf.ensure_cursor_visible(text_rect.w, text_rect.h);
 
-                if current_pos != anchor {
-                    text_buf.selection_start = anchor;
-                    text_buf.selection_end = current_pos;
-                } else if input.mouse_released.is_some() {
-                    text_buf.clear_selection();
+                    if current_pos != anchor {
+                        text_buf.selection_start = anchor;
+                        text_buf.selection_end = current_pos;
+                    } else if input.mouse_released.is_some() {
+                        text_buf.clear_selection();
+                    }
                 }
             }
         }
@@ -306,7 +328,6 @@ impl LayoutPanel for TextEditorFrame {
         let max_x = text_rect.x + text_rect.w;
         let index_x = min_x.saturating_sub(self.offset);
         let (scroll_x, scroll_y) = text_buf.scroll_offset();
-        let mut syntax_state = syntax_highlight::state_before_line(&text_buf.lines, scroll_y);
 
         frame.draw(&Rect::default(), screen);
 
@@ -318,9 +339,9 @@ impl LayoutPanel for TextEditorFrame {
             let draw_y = min_y + draw_row as u16;
             let line_links = text_buf.links_in_line(line_index);
             let syntax_colors = if self.highlight_keywords {
-                let (colors, next_state) =
-                    syntax_highlight::line_colors_with_state(&text_buf.lines[line_index], syntax_state);
-                syntax_state = next_state;
+                let line_state = text_buf.syntax_state_before_line(line_index);
+                let (colors, _) =
+                    syntax_highlight::line_colors_with_state(&text_buf.lines[line_index], line_state);
                 Some(colors)
             } else {
                 None

@@ -1,5 +1,6 @@
 use cli_clipboard::{ClipboardContext, ClipboardProvider};
 use serde::{Deserialize, Serialize};
+use crate::syntax_highlight;
 
 type CursorPos = (usize, usize);
 type Selection = (CursorPos, CursorPos);
@@ -51,6 +52,8 @@ pub struct TextBuf{
     edit_version: u64,
     viewport_width: u16,
     viewport_height: u16,
+    syntax_line_states: Vec<syntax_highlight::HighlightState>,
+    word_selection_anchor: Option<Selection>,
 }
 
 const TAB_WIDTH: usize = 4;
@@ -214,6 +217,32 @@ impl TextBuf {
         self.edit_version
     }
 
+    fn invalidate_syntax_cache(&mut self) {
+        self.syntax_line_states.clear();
+        self.syntax_line_states
+            .push(syntax_highlight::HighlightState::default());
+    }
+
+    fn ensure_syntax_cache_through(&mut self, end_line_exclusive: usize) {
+        if self.syntax_line_states.is_empty() {
+            self.invalidate_syntax_cache();
+        }
+
+        let target = end_line_exclusive.min(self.lines.len());
+        while self.syntax_line_states.len() <= target {
+            let line_index = self.syntax_line_states.len() - 1;
+            let state = self.syntax_line_states[line_index];
+            let next_state = syntax_highlight::advance_state(&self.lines[line_index], state);
+            self.syntax_line_states.push(next_state);
+        }
+    }
+
+    pub fn syntax_state_before_line(&mut self, line_index: usize) -> syntax_highlight::HighlightState {
+        let target = line_index.min(self.lines.len());
+        self.ensure_syntax_cache_through(target);
+        self.syntax_line_states[target]
+    }
+
     pub fn set_viewport_size(&mut self, width: u16, height: u16) {
         self.viewport_width = width;
         self.viewport_height = height;
@@ -227,6 +256,74 @@ impl TextBuf {
         self.current_index = cursor.0;
         self.line_index = cursor.1;
         self.ensure_invariants();
+    }
+
+    fn is_word_char(ch: char) -> bool {
+        ch.is_alphanumeric() || ch == '_'
+    }
+
+    fn pos_le(a: CursorPos, b: CursorPos) -> bool {
+        a.1 < b.1 || (a.1 == b.1 && a.0 <= b.0)
+    }
+
+    pub fn word_range_at(&self, pos: (usize, usize)) -> ((usize, usize), (usize, usize)) {
+        let line = pos.1.min(self.lines.len().saturating_sub(1));
+        let chars = &self.lines[line];
+        if chars.is_empty() {
+            return ((0, line), (0, line));
+        }
+
+        let mut index = pos.0.min(chars.len());
+        if index == chars.len() {
+            index = index.saturating_sub(1);
+        }
+
+        if !Self::is_word_char(chars[index]) {
+            return ((index, line), ((index + 1).min(chars.len()), line));
+        }
+
+        let mut start = index;
+        while start > 0 && Self::is_word_char(chars[start - 1]) {
+            start -= 1;
+        }
+
+        let mut end = index + 1;
+        while end < chars.len() && Self::is_word_char(chars[end]) {
+            end += 1;
+        }
+
+        ((start, line), (end, line))
+    }
+
+    pub fn start_word_selection_at(&mut self, pos: CursorPos) {
+        let (start, end) = self.word_range_at(pos);
+        self.selection_start = start;
+        self.selection_end = end;
+        self.set_cursor(end);
+        self.word_selection_anchor = Some((start, end));
+    }
+
+    pub fn update_word_selection_to(&mut self, pos: CursorPos) -> bool {
+        let Some((anchor_start, anchor_end)) = self.word_selection_anchor else {
+            return false;
+        };
+
+        let (current_start, current_end) = self.word_range_at(pos);
+        if Self::pos_le(current_start, anchor_start) {
+            self.selection_start = current_start;
+            self.selection_end = anchor_end;
+            self.set_cursor(current_start);
+        } else {
+            self.selection_start = anchor_start;
+            self.selection_end = current_end;
+            self.set_cursor(current_end);
+        }
+
+        true
+    }
+
+    pub fn clear_word_selection_anchor(&mut self) {
+        self.word_selection_anchor = None;
     }
 
     fn cursor(&self) -> CursorPos {
@@ -270,12 +367,14 @@ impl TextBuf {
         self.line_index = 0;
         self.selection_start = (0, 0);
         self.selection_end = (0, 0);
+        self.word_selection_anchor = None;
         self.undo_stack.clear();
         self.redo_stack.clear();
         self.scroll_x = 0;
         self.scroll_y = 0;
         self.clear_search_matches();
         self.edit_version = self.edit_version.saturating_add(1);
+        self.invalidate_syntax_cache();
         self.ensure_invariants();
     }
 
@@ -394,6 +493,7 @@ impl TextBuf {
         self.line_index = end.1;
         self.clear_selection();
         self.edit_version = self.edit_version.saturating_add(1);
+        self.invalidate_syntax_cache();
         self.ensure_invariants();
         end
     }
@@ -404,6 +504,7 @@ impl TextBuf {
         self.line_index = start.1;
         self.clear_selection();
         self.edit_version = self.edit_version.saturating_add(1);
+        self.invalidate_syntax_cache();
         self.ensure_invariants();
         deleted
     }
@@ -538,6 +639,7 @@ impl TextBuf {
     pub fn clear_selection(&mut self) {
         self.selection_start = (0, 0);
         self.selection_end = (0, 0);
+        self.word_selection_anchor = None;
     }
 
     pub fn is_selected(&self, x: usize, line: usize) -> bool {
@@ -860,6 +962,7 @@ impl TextBuf {
         self.line_index = cursor.1;
         self.selection_start = self.clamp_pos(state.selection_start);
         self.selection_end = self.clamp_pos(state.selection_end);
+        self.word_selection_anchor = None;
         self.ensure_invariants();
     }
 }
@@ -1127,6 +1230,8 @@ impl Default for TextBuf {
             edit_version: 0,
             viewport_width: 0,
             viewport_height: 0,
+            syntax_line_states: vec![syntax_highlight::HighlightState::default()],
+            word_selection_anchor: None,
         }
     }
 }

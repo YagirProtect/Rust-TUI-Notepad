@@ -78,12 +78,74 @@ pub struct HighlightState {
     pub in_html_comment: bool,
 }
 
+pub fn advance_state(line: &[char], mut state: HighlightState) -> HighlightState {
+    let mut index = 0;
+
+    while index < line.len() {
+        let ch = line[index];
+
+        if state.in_block_comment {
+            if starts_with(line, index, &['*', '/']) {
+                index += 2;
+                state.in_block_comment = false;
+            } else {
+                index += 1;
+            }
+            continue;
+        }
+
+        if state.in_html_comment {
+            if starts_with(line, index, &['-', '-', '>']) {
+                index += 3;
+                state.in_html_comment = false;
+            } else {
+                index += 1;
+            }
+            continue;
+        }
+
+        if ch == '/' && line.get(index + 1) == Some(&'/') {
+            break;
+        }
+
+        if starts_with(line, index, &['/', '*']) {
+            index += 2;
+            state.in_block_comment = true;
+            continue;
+        }
+
+        if starts_with(line, index, &['<', '!', '-', '-']) {
+            index += 4;
+            state.in_html_comment = true;
+            continue;
+        }
+
+        if is_quote(ch) {
+            let quote = ch;
+            index += 1;
+
+            while index < line.len() {
+                if line[index] == quote && !is_escaped(line, index) {
+                    index += 1;
+                    break;
+                }
+                index += 1;
+            }
+            continue;
+        }
+
+        index += 1;
+    }
+
+    state
+}
+
 pub fn state_before_line(lines: &[Vec<char>], end_line_exclusive: usize) -> HighlightState {
     let mut state = HighlightState::default();
     let end = end_line_exclusive.min(lines.len());
 
     for line in &lines[..end] {
-        (_, state) = line_colors_with_state(line, state);
+        state = advance_state(line, state);
     }
 
     state

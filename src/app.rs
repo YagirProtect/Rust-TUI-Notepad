@@ -126,9 +126,8 @@ impl App{
 
             self.maybe_persist_recovery();
 
-            if self.input.mode == EInputMode::TextEditor
-                && self.input.mouse_down.is_some()
-                && self.input.text_mouse_anchor.is_some()
+            if self.input.mouse_down.is_some()
+                && (self.input.mode == EInputMode::TextEditor || self.input.is_search_mode())
             {
                 dirty = true;
             }
@@ -155,6 +154,8 @@ impl App{
                 self.input.text_mouse_anchor = None;
             }
             self.input.clicked = None;
+            self.input.middle_clicked = None;
+            self.input.double_clicked = None;
             self.input.mouse_released = None;
             self.input.mouse_scroll = None;
             self.input.pending_text.clear();
@@ -262,8 +263,20 @@ impl App{
                     self.input.is_ctrl = self.input.is_ctrl || m.modifiers.contains(KeyModifiers::CONTROL);
                     self.input.is_alt = m.modifiers.contains(KeyModifiers::ALT);
                     self.input.clicked = Some((m.column, m.row));
+                    if self.input.register_left_click(m.column, m.row) {
+                        self.input.double_clicked = Some((m.column, m.row));
+                    }
                     self.input.mouse_down = Some((m.column, m.row));
                     self.input.mouse_released = None;
+                    true
+                }
+                MouseEventKind::Down(MouseButton::Middle) => {
+                    self.input.cursor_x = m.column.min(w.saturating_sub(1));
+                    self.input.cursor_y = m.row.min(h.saturating_sub(1));
+                    self.input.is_shift = self.input.is_shift || m.modifiers.contains(KeyModifiers::SHIFT);
+                    self.input.is_ctrl = self.input.is_ctrl || m.modifiers.contains(KeyModifiers::CONTROL);
+                    self.input.is_alt = m.modifiers.contains(KeyModifiers::ALT);
+                    self.input.middle_clicked = Some((m.column, m.row));
                     true
                 }
                 MouseEventKind::Up(MouseButton::Left) => {
